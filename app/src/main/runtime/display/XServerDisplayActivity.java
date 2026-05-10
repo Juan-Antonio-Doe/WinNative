@@ -98,6 +98,7 @@ import com.winlator.cmod.shared.util.Callback;
 import com.winlator.cmod.shared.util.OnExtractFileListener;
 import com.winlator.cmod.shared.ui.dialog.PreloaderDialog;
 import com.winlator.cmod.runtime.system.ProcessHelper;
+import com.winlator.cmod.runtime.system.SessionKeepAliveService;
 import com.winlator.cmod.shared.android.RefreshRateUtils;
 import com.winlator.cmod.shared.util.StringUtils;
 import com.winlator.cmod.shared.io.TarCompressorUtils;
@@ -1190,6 +1191,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         cachedContainerLabel = container != null ? container.getName() : "";
         showLaunchPreloader(getString(R.string.preloader_initializing));
 
+        SessionKeepAliveService.startSession(this);
+
         inputControlsManager = new InputControlsManager(this);
         xServer = new XServer(new ScreenInfo(screenSize), isNativeRenderingEnabled);
         xServer.setWinHandler(winHandler);
@@ -1776,10 +1779,14 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         if (taskManagerPaneVisible && taskManagerTimer == null) {
             startTaskManagerPolling();
         }
+
+        SessionKeepAliveService.resumeSession(this);
     }
 
     @Override
     public void onPause() {
+        SessionKeepAliveService.pauseSession(this);
+
         super.onPause();
         isVolumeUpPressed = false;
         isVolumeDownPressed = false;
@@ -2384,6 +2391,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                     xServerView = null;
                     if (preloaderDialog != null && preloaderDialog.isShowing()) preloaderDialog.closeOnUiThread();
                     cleanupDebugDialog("exit");
+                    SessionKeepAliveService.stopSession(XServerDisplayActivity.this);
                     closeAfterSessionExit();
                 }
             }, 1000);
@@ -5060,6 +5068,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (isPaused) return super.dispatchGenericMotionEvent(event);
         boolean handledByWinHandler = false;
         boolean handledByTouchpadView = false;
 
@@ -5100,6 +5109,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (isPaused) return super.dispatchKeyEvent(event);
         if (ExternalController.isGameController(event.getDevice())) {
             cancelMousePointerTimeout();
             if (touchpadView != null) {
