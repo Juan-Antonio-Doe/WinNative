@@ -1773,6 +1773,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
         if (!cleaningUp) {
             ProcessHelper.resumeAllWineProcesses();
+            if (isPaused) {
+                isPaused = false;
+                renderDrawerMenu();
+            }
         }
 
         // Resume task-manager polling only if the pane is still the active selection.
