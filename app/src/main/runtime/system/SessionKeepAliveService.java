@@ -319,7 +319,7 @@ public class SessionKeepAliveService extends Service {
 
     private void generateNotificationId() {
         // Generate a unique ID based on the package name to avoid conflicts with other forks/flavors.
-        String contextKey = getPackageName() + ".bionic.keepAlive";
+        String contextKey = getPackageName() + ".winnative.keepAlive";
         notificationId = contextKey.hashCode() & 0x7FFFFFFF; // Avoid negative IDs
     }
 }
