@@ -1293,7 +1293,6 @@ private fun BottomActions(
         if (pause != null) {
             BottomActionButton(
                 item = pause,
-//                label = stringResource(if (pause.active) R.string.session_drawer_resume else R.string.session_drawer_pause),
                 label = pause.title,
                 isExit = false,
                 modifier = Modifier.weight(1f),

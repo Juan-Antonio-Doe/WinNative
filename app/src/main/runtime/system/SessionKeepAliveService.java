@@ -21,6 +21,7 @@ import androidx.core.app.NotificationCompat;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.app.shell.UnifiedActivity;
+import com.winlator.cmod.runtime.display.XServerDisplayActivity;
 
 import java.util.HashSet;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -230,6 +231,7 @@ public class SessionKeepAliveService extends Service {
                 "Keeps WinNative running in the background so a paused game session or "
                         + "an active component download is not interrupted by screen lock.");
         channel.setShowBadge(false);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
         nm.createNotificationChannel(channel);
     }
 
@@ -250,8 +252,8 @@ public class SessionKeepAliveService extends Service {
             content = "WinNative is running in the background";
         }
 
-        Intent openIntent = new Intent(this, UnifiedActivity.class);
-        openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        Intent openIntent = new Intent(this, XServerDisplayActivity.class);
+        openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
         PendingIntent contentIntent = PendingIntent.getActivity(
                 this,
                 0,
@@ -259,10 +261,11 @@ public class SessionKeepAliveService extends Service {
                 PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle(getString(R.string.common_ui_app_name))
+                .setSmallIcon(R.drawable.ic_stat_ab_gear_0011)
+                .setContentTitle("WinNative")
                 .setContentText(content)
-                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .setOngoing(true)
                 .setShowWhen(false)
                 .setContentIntent(contentIntent)

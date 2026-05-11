@@ -418,7 +418,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
     };
 
-    private void createNotifcationChannel() {
+    /*private void createNotifcationChannel() {
         String name = "WinNative";
         String description = getString(R.string.session_xserver_notification_description);
         int importance = NotificationManager.IMPORTANCE_LOW;
@@ -426,7 +426,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         channel.setDescription(description);
         NotificationManager notificationManager = getSystemService(NotificationManager.class);
         notificationManager.createNotificationChannel(channel);
-    }
+    }*/
 
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
@@ -1265,7 +1265,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         // Check if a profile is defined by the shortcut
         String controlsProfile = shortcut != null ? shortcut.getExtra("controlsProfile", "") : "";
 
-        createNotifcationChannel();
+        /*createNotifcationChannel();
 
         Intent notificationIntent = new Intent(this, XServerDisplayActivity.class);
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
@@ -1277,7 +1277,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(false);
 
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, builder.build());
+        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, builder.build());*/
 
         Runnable runnable = () -> {
             setupUI();
@@ -1771,12 +1771,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
         startTime = System.currentTimeMillis();
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
-        if (!cleaningUp) {
+        if (!cleaningUp && !isPaused) {
             ProcessHelper.resumeAllWineProcesses();
-            if (isPaused) {
-                isPaused = false;
-                renderDrawerMenu();
-            }
         }
 
         // Resume task-manager polling only if the pane is still the active selection.
@@ -1833,6 +1829,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             if (winHandler != null) winHandler.setOnGetProcessInfoListener(null);
             taskManagerAccum.clear();
         }
+
+        isPaused = true;
     }
 
 
@@ -2352,7 +2350,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             return;
         }
 
-        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
+//        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         if (shortcutName != null && !shortcutName.isEmpty()) {
             preloaderDialog.showOnUiThread("Closing " + shortcutName + "...");
         } else {
