@@ -20,7 +20,6 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.winlator.cmod.R;
-import com.winlator.cmod.app.shell.UnifiedActivity;
 import com.winlator.cmod.runtime.display.XServerDisplayActivity;
 
 import java.util.HashSet;
@@ -42,29 +41,27 @@ public class SessionKeepAliveService extends Service {
 
     private static final String CHANNEL_ID = "winnative_session_keepalive";
 
-    private static final String ACTION_SESSION_START = "com.winlator.cmod.action.SESSION_START";
+//    private static final String ACTION_SESSION_START = "com.winlator.cmod.action.SESSION_START";
     private static final String ACTION_SESSION_STOP = "com.winlator.cmod.action.SESSION_STOP";
     private static final String ACTION_SESSION_PAUSE = "com.winlator.cmod.action.SESSION_PAUSE";
     private static final String ACTION_SESSION_RESUME = "com.winlator.cmod.action.SESSION_RESUME";
     private static final String ACTION_DL_START = "com.winlator.cmod.action.SESSION_DL_START";
     private static final String ACTION_DL_STOP = "com.winlator.cmod.action.SESSION_DL_STOP";
-    private static final String ACTION_REFRESH = "com.winlator.cmod.action.SESSION_REFRESH";
-
     private static final String EXTRA_TAG = "tag";
 
     private static final AtomicBoolean sessionActive = new AtomicBoolean(false);
     private static final HashSet<String> activeDownloads = new HashSet<>();
     private static final AtomicBoolean serviceRunning = new AtomicBoolean(false);
 
+    private static boolean isContainerPaused = false;
+
     private PowerManager.WakeLock wakeLock;
-    private WifiManager.WifiLock wifiLock;
+//    private WifiManager.WifiLock wifiLock;
     private int notificationId;
 
     public static void startSession(Context ctx) {
         if (ctx == null) return;
-        if (sessionActive.compareAndSet(false, true)) {
-            sendCommand(ctx, ACTION_SESSION_START, null);;
-        }
+        sessionActive.set(true);
     }
 
     public static void stopSession(Context ctx) {
@@ -74,14 +71,14 @@ public class SessionKeepAliveService extends Service {
         }
     }
 
-    public static void resumeSession(Context ctx) {
-        if (ctx == null) return;
-        sendCommand(ctx, ACTION_SESSION_RESUME, null);
-    }
-
-    public static void pauseSession(Context ctx) {
+    public static void onPauseSession(Context ctx) {
         if (ctx == null) return;
         sendCommand(ctx, ACTION_SESSION_PAUSE, null);
+    }
+
+    public static void onResumeSession(Context ctx) {
+        if (ctx == null) return;
+        sendCommand(ctx, ACTION_SESSION_RESUME, null);
     }
 
     public static void startDownload(Context ctx, String tag) {
@@ -113,7 +110,7 @@ public class SessionKeepAliveService extends Service {
     }
 
     private static boolean hasReason() {
-        if (sessionActive.get()) return true;
+        if (sessionActive.get() && isContainerPaused) return true;
         synchronized (activeDownloads) {
             return !activeDownloads.isEmpty();
         }
@@ -125,12 +122,17 @@ public class SessionKeepAliveService extends Service {
         intent.setAction(action);
         if (tag != null) intent.putExtra(EXTRA_TAG, tag);
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    (ACTION_SESSION_PAUSE.equals(action) || ACTION_DL_START.equals(action))) {
                 app.startForegroundService(intent);
             } else {
                 app.startService(intent);
             }
         } catch (Exception e) {
+            // If starting the service fails, try starting it as a foreground service as a fallback.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                app.startForegroundService(intent);
+            }
             Log.w(TAG, "Failed to send command " + action, e);
         }
     }
@@ -165,13 +167,17 @@ public class SessionKeepAliveService extends Service {
 
         if (ACTION_SESSION_PAUSE.equals(action)) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
+            isContainerPaused = true;
+            Log.d(TAG, "Session paused; keeping service alive in the background");
 //            if (wifiLock != null && !wifiLock.isHeld()) wifiLock.acquire();
         } else if (ACTION_SESSION_RESUME.equals(action)) {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+            isContainerPaused = false;
 //            if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         }
         else if (ACTION_SESSION_STOP.equals(action)) {
             sessionActive.set(false);
+            isContainerPaused = false;
         }
 
         // Always promote to foreground first so Android does not consider
@@ -245,7 +251,10 @@ public class SessionKeepAliveService extends Service {
         if (container && dl) {
             content = "Session paused — downloads continuing in background";
         } else if (container) {
-            content = "Container session is paused in the background";
+            if (isContainerPaused)
+                content = "Container session is paused";
+            else
+                content = "There is a container session running";
         } else if (dl) {
             content = "Downloading components in the background";
         } else {
