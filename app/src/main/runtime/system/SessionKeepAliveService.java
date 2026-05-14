@@ -8,7 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
-import android.net.wifi.WifiManager;
+//import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -168,7 +168,6 @@ public class SessionKeepAliveService extends Service {
         if (ACTION_SESSION_PAUSE.equals(action)) {
             if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
             isContainerPaused = true;
-            Log.d(TAG, "Session paused; keeping service alive in the background");
 //            if (wifiLock != null && !wifiLock.isHeld()) wifiLock.acquire();
         } else if (ACTION_SESSION_RESUME.equals(action)) {
             if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
