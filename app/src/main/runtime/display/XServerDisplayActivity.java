@@ -4965,6 +4965,16 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        handleDrawerEdgeSwipe(event); // Allow edge swipe to open drawer even when container is paused.
+
+        // Avoid processing touch events when paused, except for allowing drawer edge swipe to open the drawer
+        // Fix for an 'ANR Input dispatching timed out' exception that crashes the app.
+        if (isPaused && (drawerStateHolder == null ||
+                (!drawerStateHolder.isDrawerOpen() && !drawerStateHolder.isPaneOpen()))) {
+
+            return true;
+        }
+
         return super.dispatchTouchEvent(event);
     }
 
@@ -5039,7 +5049,13 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
-        if (isPaused) return super.dispatchGenericMotionEvent(event);
+//        if (isPaused) return super.dispatchGenericMotionEvent(event);
+        if (isPaused && (drawerStateHolder == null ||
+                (!drawerStateHolder.isDrawerOpen() && !drawerStateHolder.isPaneOpen()))) {
+
+            return true;
+        }
+
         boolean handledByWinHandler = false;
         boolean handledByTouchpadView = false;
 
