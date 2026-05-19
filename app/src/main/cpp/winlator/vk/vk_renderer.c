@@ -3,6 +3,9 @@
 // Owns the entire native-side rendering state. Java JNI shims push scene snapshots and call
 // frame submit; this file handles instance/device/swapchain/pipelines/sync.
 //
+// All vk* calls below resolve through vk_dispatch.h, which redirects them to the dlopen
+// handle (system libvulkan or adrenotools-loaded Turnip) chosen at nativeCreate.
+//
 // Synchronization model:
 //   - One graphics queue, serialized externally via VkRenderer::queue_mutex (any thread submits).
 //   - VK_FRAMES_IN_FLIGHT in-flight frames, each with its own semaphores + fence + cmd buffer.
@@ -12,13 +15,14 @@
 //     native texture objects that Java handles have not explicitly destroyed yet.
 
 #include "vk_state.h"
+#include "vk_driver.h"
 
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+#include <dlfcn.h>
 #include <jni.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 // SPIR-V shader byte arrays generated at build time by glslc + bin2c.cmake.
 #include "shaders/window_vert.spv.h"
@@ -27,23 +31,10 @@
 #include "shaders/quad_vert.spv.h"
 #include "shaders/blit_frag.spv.h"
 #include "shaders/effect_crt_frag.spv.h"
-#include "shaders/effect_fsr_frag.spv.h"
+#include "shaders/effect_vivid_frag.spv.h"
 #include "shaders/effect_hdr_frag.spv.h"
 #include "shaders/effect_natural_frag.spv.h"
-
-// ============================================================
-// Time helpers
-// ============================================================
-
-static int64_t now_ns(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (int64_t)ts.tv_sec * 1000000000LL + ts.tv_nsec;
-}
-
-static const int64_t FPS_LIMIT_RESYNC_NS = 100000000LL;
-static const int64_t FPS_LIMIT_SLEEP_THRESHOLD_NS = 500000LL;
-static const int64_t FPS_LIMIT_SPIN_WINDOW_NS = 4000000LL;
+#include "shaders/sgsr1_frag.spv.h"
 
 // ============================================================
 // Forward decls
@@ -62,6 +53,8 @@ static bool create_swapchain(VkRenderer* r, uint32_t fallback_width, uint32_t fa
 static void destroy_swapchain(VkRenderer* r);
 static bool create_offscreen(VkRenderer* r, uint32_t w, uint32_t h);
 static void destroy_offscreen(VkRenderer* r);
+static bool create_sgsr1_resources(VkRenderer* r, uint32_t w, uint32_t h);
+static void destroy_sgsr1_resources(VkRenderer* r);
 static bool create_quad_vbo(VkRenderer* r);
 static void destroy_quad_vbo(VkRenderer* r);
 static bool is_plain_rotation_transform(VkSurfaceTransformFlagBitsKHR transform);
@@ -221,6 +214,11 @@ static bool create_instance(VkRenderer* r) {
         return false;
     }
 
+    if (!vkd_load_instance(r->instance)) {
+        VK_LOGE("vkd_load_instance failed");
+        return false;
+    }
+
     if (r->debug_utils_enabled) {
         r->fnCreateDebugUtilsMessenger =
                 (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(
@@ -350,6 +348,11 @@ static bool create_device(VkRenderer* r) {
 
     r->ext_ahb = ahb_ok;
     r->ext_ycbcr = has_ycbcr;
+    VK_LOGI("AHB Vulkan device support: android_hardware_buffer=%d external_memory=%d dedicated=%d get_memory_requirements2=%d queue_family_foreign=%d enabled=%d",
+            has_ahb, has_extmem, has_dedicated, has_get_mem_req2, has_queue_fam, r->ext_ahb);
+    if (!r->ext_ahb) {
+        VK_LOGW("AHB Vulkan import disabled; one or more required device extensions are missing");
+    }
 
     float qprio = 1.0f;
     VkDeviceQueueCreateInfo qci = {VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
@@ -378,6 +381,10 @@ static bool create_device(VkRenderer* r) {
     if (r->ext_ahb) {
         r->fnGetAhbProps = (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)
             vkGetDeviceProcAddr(r->device, "vkGetAndroidHardwareBufferPropertiesANDROID");
+        if (!r->fnGetAhbProps) {
+            VK_LOGW("AHB Vulkan import disabled; vkGetAndroidHardwareBufferPropertiesANDROID is unavailable");
+            r->ext_ahb = false;
+        }
     }
     if (r->ext_ycbcr) {
         r->fnCreateYcbcr = (PFN_vkCreateSamplerYcbcrConversion)
@@ -703,6 +710,7 @@ static bool create_pipeline_layouts(VkRenderer* r) {
     if (vkCreatePipelineLayout(r->device, &plci2, NULL, &r->pipelines.effect_layout) != VK_SUCCESS) {
         return false;
     }
+
     return true;
 }
 
@@ -815,11 +823,13 @@ static bool create_pipelines(VkRenderer* r) {
     VkShaderModule vs_quad   = load_shader_module(r, quad_vert,   quad_vert_size);
     VkShaderModule fs_blit   = load_shader_module(r, blit_frag,   blit_frag_size);
     VkShaderModule fs_crt    = load_shader_module(r, effect_crt_frag,    effect_crt_frag_size);
-    VkShaderModule fs_fsr    = load_shader_module(r, effect_fsr_frag,    effect_fsr_frag_size);
+    VkShaderModule fs_vivid  = load_shader_module(r, effect_vivid_frag,  effect_vivid_frag_size);
     VkShaderModule fs_hdr    = load_shader_module(r, effect_hdr_frag,    effect_hdr_frag_size);
     VkShaderModule fs_natural= load_shader_module(r, effect_natural_frag,effect_natural_frag_size);
+    VkShaderModule fs_sgsr1 = load_shader_module(r, sgsr1_frag, sgsr1_frag_size);
     if (!vs_window || !fs_window || !fs_cursor || !vs_quad || !fs_blit
-        || !fs_crt || !fs_fsr || !fs_hdr || !fs_natural) {
+        || !fs_crt || !fs_vivid || !fs_hdr || !fs_natural
+        || !fs_sgsr1) {
         return false;
     }
 
@@ -835,14 +845,17 @@ static bool create_pipelines(VkRenderer* r) {
     r->pipelines.effect_pipelines[VK_EFFECT_CRT] = create_graphics_pipeline(
         r, vs_quad, fs_crt, r->pipelines.effect_layout, r->pipelines.swapchain_pass,
         false, false, NULL);
-    r->pipelines.effect_pipelines[VK_EFFECT_FSR] = create_graphics_pipeline(
-        r, vs_quad, fs_fsr, r->pipelines.effect_layout, r->pipelines.swapchain_pass,
+    r->pipelines.effect_pipelines[VK_EFFECT_VIVID] = create_graphics_pipeline(
+        r, vs_quad, fs_vivid, r->pipelines.effect_layout, r->pipelines.swapchain_pass,
         false, false, NULL);
     r->pipelines.effect_pipelines[VK_EFFECT_HDR] = create_graphics_pipeline(
         r, vs_quad, fs_hdr, r->pipelines.effect_layout, r->pipelines.swapchain_pass,
         false, false, NULL);
     r->pipelines.effect_pipelines[VK_EFFECT_NATURAL] = create_graphics_pipeline(
         r, vs_quad, fs_natural, r->pipelines.effect_layout, r->pipelines.swapchain_pass,
+        false, false, NULL);
+    r->pipelines.effect_pipelines[VK_EFFECT_SGSR1] = create_graphics_pipeline(
+        r, vs_quad, fs_sgsr1, r->pipelines.effect_layout, r->pipelines.swapchain_pass,
         false, false, NULL);
     r->pipelines.offscreen_window_pipeline = create_graphics_pipeline(
         r, vs_window, fs_window, r->pipelines.window_layout, r->pipelines.offscreen_pass,
@@ -856,14 +869,17 @@ static bool create_pipelines(VkRenderer* r) {
     r->pipelines.offscreen_effect_pipelines[VK_EFFECT_CRT] = create_graphics_pipeline(
         r, vs_quad, fs_crt, r->pipelines.effect_layout, r->pipelines.offscreen_pass,
         false, false, NULL);
-    r->pipelines.offscreen_effect_pipelines[VK_EFFECT_FSR] = create_graphics_pipeline(
-        r, vs_quad, fs_fsr, r->pipelines.effect_layout, r->pipelines.offscreen_pass,
+    r->pipelines.offscreen_effect_pipelines[VK_EFFECT_VIVID] = create_graphics_pipeline(
+        r, vs_quad, fs_vivid, r->pipelines.effect_layout, r->pipelines.offscreen_pass,
         false, false, NULL);
     r->pipelines.offscreen_effect_pipelines[VK_EFFECT_HDR] = create_graphics_pipeline(
         r, vs_quad, fs_hdr, r->pipelines.effect_layout, r->pipelines.offscreen_pass,
         false, false, NULL);
     r->pipelines.offscreen_effect_pipelines[VK_EFFECT_NATURAL] = create_graphics_pipeline(
         r, vs_quad, fs_natural, r->pipelines.effect_layout, r->pipelines.offscreen_pass,
+        false, false, NULL);
+    r->pipelines.offscreen_effect_pipelines[VK_EFFECT_SGSR1] = create_graphics_pipeline(
+        r, vs_quad, fs_sgsr1, r->pipelines.effect_layout, r->pipelines.offscreen_pass,
         false, false, NULL);
 
     vkDestroyShaderModule(r->device, vs_window, NULL);
@@ -872,23 +888,32 @@ static bool create_pipelines(VkRenderer* r) {
     vkDestroyShaderModule(r->device, vs_quad, NULL);
     vkDestroyShaderModule(r->device, fs_blit, NULL);
     vkDestroyShaderModule(r->device, fs_crt, NULL);
-    vkDestroyShaderModule(r->device, fs_fsr, NULL);
+    vkDestroyShaderModule(r->device, fs_vivid, NULL);
     vkDestroyShaderModule(r->device, fs_hdr, NULL);
     vkDestroyShaderModule(r->device, fs_natural, NULL);
+    vkDestroyShaderModule(r->device, fs_sgsr1, NULL);
 
     if (!r->pipelines.window_pipeline || !r->pipelines.cursor_pipeline
         || !r->pipelines.blit_pipeline
         || !r->pipelines.offscreen_window_pipeline
         || !r->pipelines.offscreen_cursor_pipeline
         || !r->pipelines.offscreen_blit_pipeline) {
+        destroy_pipelines(r);
         return false;
+    }
+    for (uint32_t i = 0; i < VK_EFFECT_COUNT; i++) {
+        if (!r->pipelines.effect_pipelines[i]
+            || !r->pipelines.offscreen_effect_pipelines[i]) {
+            VK_LOGE("Failed to create effect pipeline %u", i);
+            destroy_pipelines(r);
+            return false;
+        }
     }
     r->pipelines_built = true;
     return true;
 }
 
 static void destroy_pipelines(VkRenderer* r) {
-    if (!r->pipelines_built) return;
     for (uint32_t i = 0; i < VK_EFFECT_COUNT; i++) {
         if (r->pipelines.effect_pipelines[i] != VK_NULL_HANDLE) {
             vkDestroyPipeline(r->device, r->pipelines.effect_pipelines[i], NULL);
@@ -1170,7 +1195,8 @@ static void destroy_swapchain(VkRenderer* r) {
 // Offscreen ping-pong (for effect chain)
 // ============================================================
 
-static bool create_one_offscreen(VkRenderer* r, VkOffscreen* o, uint32_t w, uint32_t h) {
+static bool create_one_offscreen(VkRenderer* r, VkOffscreen* o, uint32_t w, uint32_t h,
+                                 VkFilter filter) {
     o->width = w;
     o->height = h;
 
@@ -1208,8 +1234,8 @@ static bool create_one_offscreen(VkRenderer* r, VkOffscreen* o, uint32_t w, uint
     if (vkCreateImageView(r->device, &vi, NULL, &o->view) != VK_SUCCESS) return false;
 
     VkSamplerCreateInfo si = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    si.magFilter = VK_FILTER_LINEAR;
-    si.minFilter = VK_FILTER_LINEAR;
+    si.magFilter = filter;
+    si.minFilter = filter;
     si.addressModeU = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     si.addressModeV = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
     si.addressModeW = VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -1255,17 +1281,48 @@ static void destroy_one_offscreen(VkRenderer* r, VkOffscreen* o) {
 static bool create_offscreen(VkRenderer* r, uint32_t w, uint32_t h) {
     if (r->offscreen_built && r->offscreen[0].width == w && r->offscreen[0].height == h) return true;
     destroy_offscreen(r);
-    if (!create_one_offscreen(r, &r->offscreen[0], w, h)) return false;
-    if (!create_one_offscreen(r, &r->offscreen[1], w, h)) return false;
+    if (!create_one_offscreen(r, &r->offscreen[0], w, h, VK_FILTER_LINEAR)) goto fail;
+    if (!create_one_offscreen(r, &r->offscreen[1], w, h, VK_FILTER_LINEAR)) goto fail;
     r->offscreen_built = true;
     return true;
+
+fail:
+    destroy_offscreen(r);
+    return false;
 }
 
 static void destroy_offscreen(VkRenderer* r) {
-    if (!r->offscreen_built) return;
     destroy_one_offscreen(r, &r->offscreen[0]);
     destroy_one_offscreen(r, &r->offscreen[1]);
     r->offscreen_built = false;
+}
+
+static bool create_sgsr1_resources(VkRenderer* r, uint32_t w, uint32_t h) {
+    if (r->sgsr1.built && r->sgsr1.width == w && r->sgsr1.height == h) return true;
+
+    destroy_sgsr1_resources(r);
+    if (!create_one_offscreen(r, &r->sgsr1.source, w, h, VK_FILTER_LINEAR)) goto fail;
+
+    r->sgsr1.width = w;
+    r->sgsr1.height = h;
+    r->sgsr1.built = true;
+    VK_LOGI("SGSR1 source created %ux%u -> swapchain %ux%u",
+            w, h, r->swapchain_extent.width, r->swapchain_extent.height);
+    return true;
+
+fail:
+    destroy_sgsr1_resources(r);
+    return false;
+}
+
+static void destroy_sgsr1_resources(VkRenderer* r) {
+    if (r->sgsr1.built) {
+        VK_LOGI("SGSR1 source destroyed");
+    }
+    destroy_one_offscreen(r, &r->sgsr1.source);
+    r->sgsr1.built = false;
+    r->sgsr1.width = 0;
+    r->sgsr1.height = 0;
 }
 
 // ============================================================
@@ -1408,6 +1465,26 @@ static VkPreRotatedRect clamp_rect_to_extent(VkPreRotatedRect r, uint32_t extent
     return r;
 }
 
+static VkPreRotatedRect scale_rect_from_swapchain(const VkRenderer* r, VkPreRotatedRect rect,
+                                                  uint32_t target_w, uint32_t target_h) {
+    if (target_w == r->swapchain_extent.width && target_h == r->swapchain_extent.height) {
+        return rect;
+    }
+
+    float sx = r->swapchain_extent.width > 0
+        ? (float)target_w / (float)r->swapchain_extent.width
+        : 1.0f;
+    float sy = r->swapchain_extent.height > 0
+        ? (float)target_h / (float)r->swapchain_extent.height
+        : 1.0f;
+
+    rect.x = (int)((float)rect.x * sx + 0.5f);
+    rect.y = (int)((float)rect.y * sy + 0.5f);
+    rect.w = (int)((float)rect.w * sx + 0.5f);
+    rect.h = (int)((float)rect.h * sy + 0.5f);
+    return rect;
+}
+
 static void push_window_constants(VkCommandBuffer cmd, VkPipelineLayout layout,
                                   const float xform[6], float view_w, float view_h,
                                   float u0, float v0, float u1, float v1,
@@ -1445,7 +1522,11 @@ static void compose_xform_for_window(float out[6], const float scene_xform[6],
     out[5] = a[4]*scene_xform[1] + a[5]*scene_xform[3] + scene_xform[5];
 }
 
-static void set_viewport_scissor(VkCommandBuffer cmd, VkRenderer* r, const VkScene* s) {
+static void set_viewport_scissor(VkCommandBuffer cmd, VkRenderer* r, const VkScene* s,
+                                 uint32_t target_w, uint32_t target_h) {
+    if (target_w == 0) target_w = r->swapchain_extent.width;
+    if (target_h == 0) target_h = r->swapchain_extent.height;
+
     int vx, vy, vw, vh;
     if (s->viewport_set) {
         vx = s->viewport_x;
@@ -1462,6 +1543,7 @@ static void set_viewport_scissor(VkCommandBuffer cmd, VkRenderer* r, const VkSce
     VkPreRotatedRect vr = transform_rect_for_pretransform(
         vx, vy, vw, vh, r->swapchain_extent.width, r->swapchain_extent.height,
         r->swapchain_transform);
+    vr = scale_rect_from_swapchain(r, vr, target_w, target_h);
 
     VkViewport vp = {0};
     vp.x = (float)vr.x;
@@ -1487,7 +1569,8 @@ static void set_viewport_scissor(VkCommandBuffer cmd, VkRenderer* r, const VkSce
     VkPreRotatedRect sr = transform_rect_for_pretransform(
         sx, sy, sw, sh, r->swapchain_extent.width, r->swapchain_extent.height,
         r->swapchain_transform);
-    sr = clamp_rect_to_extent(sr, r->swapchain_extent.width, r->swapchain_extent.height);
+    sr = scale_rect_from_swapchain(r, sr, target_w, target_h);
+    sr = clamp_rect_to_extent(sr, target_w, target_h);
 
     VkRect2D sc = {0};
     sc.offset.x = sr.x;
@@ -1497,10 +1580,11 @@ static void set_viewport_scissor(VkCommandBuffer cmd, VkRenderer* r, const VkSce
     vkCmdSetScissor(cmd, 0, 1, &sc);
 }
 
-static void draw_scene_pass(VkRenderer* r, VkCommandBuffer cmd, const VkScene* s, bool offscreen) {
+static void draw_scene_pass(VkRenderer* r, VkCommandBuffer cmd, const VkScene* s, bool offscreen,
+                            uint32_t target_w, uint32_t target_h) {
     if (s->screen_width == 0 || s->screen_height == 0) return;
 
-    set_viewport_scissor(cmd, r, s);
+    set_viewport_scissor(cmd, r, s, target_w, target_h);
 
     // Windows
     vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1587,6 +1671,49 @@ static void run_effect(VkRenderer* r, VkCommandBuffer cmd, VkEffectSlot* eff,
     vkCmdDraw(cmd, 3, 1, 0, 0);
 }
 
+static bool scene_starts_with_sgsr1(const VkScene* s) {
+    return s->effect_count > 0 && s->effects[0].type == VK_EFFECT_SGSR1;
+}
+
+// Wait for any frame currently in flight on the graphics queue. Cheaper than
+// vkDeviceWaitIdle for the destroy-and-rebuild paths in record_and_submit_frame: we don't
+// care about non-graphics queue work, only about no live frame still sampling/drawing to
+// the resource we're about to recreate. Caller has already waited on the current frame's
+// fence; this picks up the other in-flight slots.
+static void wait_inflight_frames(VkRenderer* r) {
+    VkFence fences[VK_FRAMES_IN_FLIGHT];
+    uint32_t count = 0;
+    for (uint32_t i = 0; i < VK_FRAMES_IN_FLIGHT; i++) {
+        if (r->frames[i].in_flight) fences[count++] = r->frames[i].in_flight;
+    }
+    if (count == 0) return;
+    vkWaitForFences(r->device, count, fences, VK_TRUE, UINT64_MAX);
+}
+
+// SGSR1 upscales the actual X/DRI3 source; ratio changes take effect after restart.
+static VkExtent2D compute_sgsr1_source_extent(VkRenderer* r, const VkScene* s) {
+    VkExtent2D out = r->swapchain_extent;
+    if (out.width == 0 || out.height == 0 || s->screen_width == 0 || s->screen_height == 0) {
+        return out;
+    }
+
+    // Cap SGSR1's source at the X screen so oversized DRI3 buffers do not undo scaling.
+    uint32_t source_w = s->source_width > 0 && s->source_width < s->screen_width
+        ? s->source_width : s->screen_width;
+    uint32_t source_h = s->source_height > 0 && s->source_height < s->screen_height
+        ? s->source_height : s->screen_height;
+    transformed_view_size(&source_w, &source_h, r->swapchain_transform);
+    if (source_w == 0 || source_h == 0) return out;
+
+    VkExtent2D source = {
+        source_w < out.width ? source_w : out.width,
+        source_h < out.height ? source_h : out.height,
+    };
+    if (source.width < 1) source.width = 1;
+    if (source.height < 1) source.height = 1;
+    return source;
+}
+
 static bool record_and_submit_frame(VkRenderer* r) {
     if (!r->surface_ready || !r->swapchain) return false;
 
@@ -1616,14 +1743,41 @@ static bool record_and_submit_frame(VkRenderer* r) {
     pthread_mutex_unlock(&r->scene_mutex);
     destroy_graveyard_textures(r, dead, dead_count);
 
-    // Rebuild offscreen targets if effects are active and dims changed (or first use).
+    bool wants_sgsr1 = scene_starts_with_sgsr1(&snap);
+    bool needs_fullres_offscreen = snap.effect_count > 0
+        && (!wants_sgsr1 || snap.effect_count > 1);
+    VkExtent2D sgsr1_source_extent = wants_sgsr1
+        ? compute_sgsr1_source_extent(r, &snap)
+        : r->swapchain_extent;
+
+    // Rebuild full-res ping-pong targets only when the chain needs them. SGSR-only renders
+    // into its low-res source and writes directly to the swapchain, so the generic full-res
+    // offscreen pair would just waste memory.
     // Safe under render_mutex: lifecycle can't be tearing down the swapchain right now.
-    if (snap.effect_count > 0
+    if (needs_fullres_offscreen
         && (!r->offscreen_built
             || r->offscreen[0].width != r->swapchain_extent.width
             || r->offscreen[0].height != r->swapchain_extent.height)) {
-        vkDeviceWaitIdle(r->device);
+        wait_inflight_frames(r);
         create_offscreen(r, r->swapchain_extent.width, r->swapchain_extent.height);
+    } else if (!needs_fullres_offscreen && r->offscreen_built) {
+        wait_inflight_frames(r);
+        destroy_offscreen(r);
+    }
+    // Only rebuild SGSR1 source on meaningful dim change. Tiny pixmap-size flicker (off-by-
+    // one DRI3 jitter, transient resizes) used to thrash this allocation every frame and
+    // stall the render thread on the full-device wait that preceded it.
+    int sgsr1_dw = (int)r->sgsr1.width  - (int)sgsr1_source_extent.width;
+    int sgsr1_dh = (int)r->sgsr1.height - (int)sgsr1_source_extent.height;
+    if (sgsr1_dw < 0) sgsr1_dw = -sgsr1_dw;
+    if (sgsr1_dh < 0) sgsr1_dh = -sgsr1_dh;
+    bool sgsr1_dim_changed = r->sgsr1.built && (sgsr1_dw > 4 || sgsr1_dh > 4);
+    if (wants_sgsr1 && (!r->sgsr1.built || sgsr1_dim_changed)) {
+        wait_inflight_frames(r);
+        create_sgsr1_resources(r, sgsr1_source_extent.width, sgsr1_source_extent.height);
+    } else if (!wants_sgsr1 && r->sgsr1.built) {
+        wait_inflight_frames(r);
+        destroy_sgsr1_resources(r);
     }
 
     uint32_t image_index = 0;
@@ -1647,12 +1801,16 @@ static bool record_and_submit_frame(VkRenderer* r) {
     VkSemaphore render_finished = r->swapchain_render_finished[image_index];
 
     vkResetFences(r->device, 1, &f->in_flight);
-    vkResetCommandBuffer(f->cmd, 0);
 
     VkCommandBufferBeginInfo bi = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
+    bi.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     vkBeginCommandBuffer(f->cmd, &bi);
 
     bool has_effects = snap.effect_count > 0 && r->offscreen_built;
+    if (snap.effect_count > 0) {
+        has_effects = (!needs_fullres_offscreen || r->offscreen_built)
+            && (!wants_sgsr1 || r->sgsr1.built);
+    }
 
     VkClearValue clear = {0};
     clear.color.float32[0] = 0.0f;
@@ -1661,28 +1819,36 @@ static bool record_and_submit_frame(VkRenderer* r) {
     clear.color.float32[3] = 1.0f;
 
     if (has_effects) {
-        // Pass 1: render scene to offscreen[0]
+        VkOffscreen* scene_target = (wants_sgsr1 && r->sgsr1.built)
+            ? &r->sgsr1.source
+            : &r->offscreen[0];
+
+        // Pass 1: render scene to either full-res effect input or SGSR1's low-res source.
         VkRenderPassBeginInfo rpbi = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
         rpbi.renderPass = r->pipelines.offscreen_pass;
-        rpbi.framebuffer = r->offscreen[0].framebuffer;
-        rpbi.renderArea.extent.width = r->offscreen[0].width;
-        rpbi.renderArea.extent.height = r->offscreen[0].height;
+        rpbi.framebuffer = scene_target->framebuffer;
+        rpbi.renderArea.extent.width = scene_target->width;
+        rpbi.renderArea.extent.height = scene_target->height;
         rpbi.clearValueCount = 1;
         rpbi.pClearValues = &clear;
         vkCmdBeginRenderPass(f->cmd, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-        draw_scene_pass(r, f->cmd, &snap, true);
+        draw_scene_pass(r, f->cmd, &snap, true,
+                        scene_target->width, scene_target->height);
         vkCmdEndRenderPass(f->cmd);
 
-        // Effect chain: ping-pong [0] -> [1] -> [0] -> ... -> swapchain
-        uint32_t src_idx = 0;
+        // Effect chain: source descriptor moves through ping-pong buffers. When SGSR1 is
+        // first, the first source is low-res and SGSR1 writes full-res output.
+        VkOffscreen* src_offscreen = scene_target;
+        uint32_t dst_idx = (scene_target == &r->offscreen[0]) ? 1u : 0u;
         for (uint32_t i = 0; i < snap.effect_count; i++) {
             bool last = (i == snap.effect_count - 1);
+            VkEffectSlot* eff = &snap.effects[i];
+
             if (last) {
                 rpbi.renderPass = r->pipelines.swapchain_pass;
                 rpbi.framebuffer = r->swapchain_framebuffers[image_index];
                 rpbi.renderArea.extent = r->swapchain_extent;
             } else {
-                uint32_t dst_idx = src_idx ^ 1;
                 rpbi.renderPass = r->pipelines.offscreen_pass;
                 rpbi.framebuffer = r->offscreen[dst_idx].framebuffer;
                 rpbi.renderArea.extent.width = r->offscreen[dst_idx].width;
@@ -1691,10 +1857,12 @@ static bool record_and_submit_frame(VkRenderer* r) {
             vkCmdBeginRenderPass(f->cmd, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
             uint32_t target_w = last ? r->swapchain_extent.width : rpbi.renderArea.extent.width;
             uint32_t target_h = last ? r->swapchain_extent.height : rpbi.renderArea.extent.height;
-            run_effect(r, f->cmd, &snap.effects[i],
-                       r->offscreen[src_idx].descriptor_set, target_w, target_h, !last);
+            run_effect(r, f->cmd, eff, src_offscreen->descriptor_set, target_w, target_h, !last);
             vkCmdEndRenderPass(f->cmd);
-            src_idx ^= 1;
+            if (!last) {
+                src_offscreen = &r->offscreen[dst_idx];
+                dst_idx ^= 1u;
+            }
         }
     } else {
         VkRenderPassBeginInfo rpbi = {VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
@@ -1704,7 +1872,8 @@ static bool record_and_submit_frame(VkRenderer* r) {
         rpbi.clearValueCount = 1;
         rpbi.pClearValues = &clear;
         vkCmdBeginRenderPass(f->cmd, &rpbi, VK_SUBPASS_CONTENTS_INLINE);
-        draw_scene_pass(r, f->cmd, &snap, false);
+        draw_scene_pass(r, f->cmd, &snap, false,
+                        r->swapchain_extent.width, r->swapchain_extent.height);
         vkCmdEndRenderPass(f->cmd);
     }
 
@@ -1762,33 +1931,12 @@ static bool record_and_submit_frame(VkRenderer* r) {
     r->frame_index = (r->frame_index + 1) % VK_FRAMES_IN_FLIGHT;
     r->graveyard_index = (r->graveyard_index + 1) % (VK_FRAMES_IN_FLIGHT + 1);
 
-    // FPS limiter. Keep this cadence aligned with XClient.enforceAbsoluteFramerate().
-    if (r->target_frame_time_ns > 0) {
-        int64_t now = now_ns();
-        if (r->next_frame_time_ns == 0 || now > r->next_frame_time_ns + FPS_LIMIT_RESYNC_NS) {
-            r->next_frame_time_ns = now + r->target_frame_time_ns;
-        }
-
-        int64_t sleep_ns = r->next_frame_time_ns - now;
-        if (sleep_ns > FPS_LIMIT_SLEEP_THRESHOLD_NS) {
-            if (sleep_ns > FPS_LIMIT_SPIN_WINDOW_NS) {
-                int64_t coarse_sleep_ns = sleep_ns - FPS_LIMIT_SPIN_WINDOW_NS;
-                struct timespec ts;
-                ts.tv_sec = coarse_sleep_ns / 1000000000LL;
-                ts.tv_nsec = coarse_sleep_ns % 1000000000LL;
-                nanosleep(&ts, NULL);
-            }
-
-            while (now_ns() < r->next_frame_time_ns) {
-                // Spin for the final interval to match upstream's precise heartbeat.
-            }
-        }
-
-        r->next_frame_time_ns += r->target_frame_time_ns;
-    } else {
-        r->next_frame_time_ns = 0;
-    }
-
+    // No compositor-side FPS pacing here. Frame rate is already bounded by the X dispatch
+    // thread's XClient.enforceAbsoluteFramerate (which gates the game), Choreographer-paced
+    // requestRenderCoalesced (one render request per vsync), and FIFO present mode. Running
+    // a third sleep+busy-spin on the render thread duplicates that pacing for no FPS gain
+    // and burned ~24% of one core on busy-spinning under the GL renderer's behaviour,
+    // measurably regressing in-game 60 FPS caps.
     return true;
 }
 
@@ -1798,8 +1946,11 @@ static bool record_and_submit_frame(VkRenderer* r) {
 
 #define JNI_FN(name) Java_com_winlator_cmod_runtime_display_renderer_VulkanRenderer_##name
 
-JNIEXPORT jlong JNICALL JNI_FN(nativeCreate)(JNIEnv* env, jclass clazz, jboolean enableValidationLayers) {
-    (void)env; (void)clazz;
+JNIEXPORT jlong JNICALL JNI_FN(nativeCreate)(JNIEnv* env, jclass clazz,
+                                              jboolean enableValidationLayers,
+                                              jstring driverName,
+                                              jobject context) {
+    (void)clazz;
     VkRenderer* r = calloc(1, sizeof(VkRenderer));
     if (!r) return 0;
     r->target_present_mode = VK_PRESENT_MODE_FIFO_KHR;
@@ -1809,6 +1960,20 @@ JNIEXPORT jlong JNICALL JNI_FN(nativeCreate)(JNIEnv* env, jclass clazz, jboolean
     pthread_mutex_init(&r->texture_mutex, NULL);
     pthread_mutex_init(&r->render_mutex, NULL);
     pthread_mutex_init(&r->descriptor_mutex, NULL);
+
+    const char* driver_name_c = NULL;
+    if (driverName != NULL) driver_name_c = (*env)->GetStringUTFChars(env, driverName, NULL);
+    r->vulkan_handle = winlator_open_vulkan(env, context, driver_name_c);
+    if (driver_name_c != NULL) (*env)->ReleaseStringUTFChars(env, driverName, driver_name_c);
+
+    if (!r->vulkan_handle) {
+        VK_LOGE("winlator_open_vulkan returned NULL");
+        goto fail;
+    }
+    if (!vkd_init(r->vulkan_handle)) {
+        VK_LOGE("vkd_init failed");
+        goto fail;
+    }
 
     if (!create_instance(r)) goto fail;
     if (!pick_physical_device(r)) goto fail;
@@ -1832,6 +1997,8 @@ fail:
     if (r->device) vkDestroyDevice(r->device, NULL);
     destroy_debug_messenger(r);
     if (r->instance) vkDestroyInstance(r->instance, NULL);
+    vkd_unload();
+    if (r->vulkan_handle) { dlclose(r->vulkan_handle); r->vulkan_handle = NULL; }
     pthread_mutex_destroy(&r->scene_mutex);
     pthread_mutex_destroy(&r->queue_mutex);
     pthread_mutex_destroy(&r->texture_mutex);
@@ -1860,6 +2027,7 @@ JNIEXPORT void JNICALL JNI_FN(nativeDestroy)(JNIEnv* env, jclass clazz, jlong ha
     vkr_texture_destroy_all_live(r);
     free(r->live_textures);
 
+    destroy_sgsr1_resources(r);
     destroy_offscreen(r);
     destroy_swapchain(r);
     destroy_pipelines(r);
@@ -1879,6 +2047,11 @@ JNIEXPORT void JNICALL JNI_FN(nativeDestroy)(JNIEnv* env, jclass clazz, jlong ha
     if (r->device)  vkDestroyDevice(r->device, NULL);
     destroy_debug_messenger(r);
     if (r->instance)vkDestroyInstance(r->instance, NULL);
+
+    // Clear dispatch BEFORE dlclose so a stray call from another thread faults on NULL
+    // rather than jumping into freed library memory.
+    vkd_unload();
+    if (r->vulkan_handle) { dlclose(r->vulkan_handle); r->vulkan_handle = NULL; }
 
     pthread_mutex_destroy(&r->scene_mutex);
     pthread_mutex_destroy(&r->queue_mutex);
@@ -1907,6 +2080,7 @@ JNIEXPORT void JNICALL JNI_FN(nativeSurfaceCreated)(JNIEnv* env, jclass clazz, j
 
     if (r->surface) {
         vkDeviceWaitIdle(r->device);
+        destroy_sgsr1_resources(r);
         destroy_offscreen(r);
         destroy_swapchain(r);
         vkDestroySurfaceKHR(r->instance, r->surface, NULL);
@@ -1954,6 +2128,7 @@ JNIEXPORT void JNICALL JNI_FN(nativeSurfaceChanged)(JNIEnv* env, jclass clazz, j
 
     lifecycle_begin(r);
     vkDeviceWaitIdle(r->device);
+    destroy_sgsr1_resources(r);
     destroy_offscreen(r);
     destroy_swapchain(r);
     if (!create_swapchain(r, (uint32_t)w, (uint32_t)h)) {
@@ -1974,6 +2149,7 @@ JNIEXPORT void JNICALL JNI_FN(nativeSurfaceDestroyed)(JNIEnv* env, jclass clazz,
     lifecycle_begin(r);
 
     if (r->device) vkDeviceWaitIdle(r->device);
+    destroy_sgsr1_resources(r);
     destroy_offscreen(r);
     destroy_swapchain(r);
     if (r->surface) {
@@ -2015,7 +2191,9 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeRenderFrame)(JNIEnv* env, jclass clazz, 
 #define SCENE_OFF_WINDOW_GEOM        776      /* int32 × VK_MAX_RENDERABLE_WINDOWS × 4 */
 #define SCENE_OFF_WINDOW_UV          1800     /* float32 × VK_MAX_RENDERABLE_WINDOWS × 4 */
 #define SCENE_OFF_SWAP_RB            2824
-#define SCENE_BUF_SIZE               2828
+#define SCENE_OFF_SOURCE_W           2828
+#define SCENE_OFF_SOURCE_H           2832
+#define SCENE_BUF_SIZE               2836
 
 JNIEXPORT void JNICALL JNI_FN(nativeSetScene)(JNIEnv* env, jclass clazz, jlong handle,
                                               jobject sceneBuf)
@@ -2109,6 +2287,11 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetScene)(JNIEnv* env, jclass clazz, jlong h
     int32_t swap_rb;
     memcpy(&swap_rb, base + SCENE_OFF_SWAP_RB, sizeof(int32_t));
     s->swap_rb = swap_rb != 0;
+    int32_t source_w, source_h;
+    memcpy(&source_w, base + SCENE_OFF_SOURCE_W, sizeof(int32_t));
+    memcpy(&source_h, base + SCENE_OFF_SOURCE_H, sizeof(int32_t));
+    s->source_width = source_w > 0 ? (uint32_t)source_w : 0;
+    s->source_height = source_h > 0 ? (uint32_t)source_h : 0;
 
     // Effects
     int32_t effect_count;
@@ -2133,16 +2316,12 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetScene)(JNIEnv* env, jclass clazz, jlong h
     // here needs to touch swapchain-tied resources.
 }
 
+// FPS pacing is enforced on the X dispatch thread (XClient.enforceAbsoluteFramerate) and by
+// the swapchain present mode + Choreographer-coalesced render requests. The compositor used
+// to run its own sleep+busy-spin here too, which duplicated the pacing and burned CPU; this
+// entry point is kept as a no-op for Java-side ABI compatibility.
 JNIEXPORT void JNICALL JNI_FN(nativeSetFpsLimit)(JNIEnv* env, jclass clazz, jlong handle, jint fps) {
-    (void)env; (void)clazz;
-    VkRenderer* r = (VkRenderer*)(intptr_t)handle;
-    if (!r) return;
-    if (fps <= 0) {
-        r->target_frame_time_ns = 0;
-        r->next_frame_time_ns = 0;
-    } else {
-        r->target_frame_time_ns = 1000000000LL / fps;
-    }
+    (void)env; (void)clazz; (void)handle; (void)fps;
 }
 
 // Set the compositor present mode. Java passes 0=FIFO, 1=MAILBOX, 2=IMMEDIATE; anything else
@@ -2169,6 +2348,7 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetPresentMode)(JNIEnv* env, jclass clazz, j
     if (r->device) vkDeviceWaitIdle(r->device);
     uint32_t fw = r->surface_extent.width;
     uint32_t fh = r->surface_extent.height;
+    destroy_sgsr1_resources(r);
     destroy_offscreen(r);
     destroy_swapchain(r);
     if (!create_swapchain(r, fw, fh)) {
@@ -2309,7 +2489,13 @@ JNIEXPORT jlong JNICALL GPU_FN(nativeImportAhbToVulkan)(JNIEnv* env, jclass claz
     (void)env; (void)clazz;
     VkRenderer* r = (VkRenderer*)(intptr_t)rendererHandle;
     AHardwareBuffer* ahb = (AHardwareBuffer*)(intptr_t)ahbPtr;
-    if (!r || !ahb) return 0;
+    if (!r || !ahb) {
+        VK_LOGW("nativeImportAhbToVulkan skipped: renderer=%p ahb=%p", (void*)r, (void*)ahb);
+        return 0;
+    }
     VkTexture* t = vkr_texture_import_ahb(r, ahb, transferOwnership);
+    if (!t) {
+        VK_LOGW("nativeImportAhbToVulkan failed: ahb=%p transfer=%d", (void*)ahb, transferOwnership);
+    }
     return (jlong)(intptr_t)t;
 }

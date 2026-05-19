@@ -170,7 +170,7 @@
     <string name="library_games_no_games_hub">Nenhum Jogo Instalado\nClique para abrir o Backend do Winlator</string>
     <string name="library_games_installed_badge">INSTALADO</string>
     <string name="library_games_unknown_game">Jogo Desconhecido</string>
-    <string name="library_games_layouts_header">LAYOUTS</string>
+    <string name="library_games_layouts_header">LAYOUTS DA BIBLIOTECA</string>
     <string name="library_games_layout_carousel">Carrossel</string>
     <string name="library_games_layout_list">Lista</string>
     <string name="library_games_custom_game">Jogo Personalizado</string>
@@ -268,13 +268,13 @@
     <string name="shortcuts_properties_exclusive_input">Entrada Exclusiva</string>
     <string name="shortcuts_properties_custom_game_settings">Configuracoes Personalizadas do Jogo</string>
     <string name="shortcuts_properties_use_cold_client">Usar ColdClient Launcher</string>
-    <string name="shortcuts_properties_use_cold_client_description">ColdClient é a forma preferida de lidar com emulação Steam e DRM. Ele corrige o DRM em tempo de execução sem modificar os arquivos do jogo.</string>
+    <string name="shortcuts_properties_use_cold_client_description">Método preferido de emulação Steam. Corrige o DRM em tempo de execução sem modificar arquivos.</string>
     <string name="shortcuts_properties_unpack_files">DRM Legado</string>
-    <string name="shortcuts_properties_unpack_files_description">Remove o DRM SteamStub do exe no disco. Ative apenas se o jogo não iniciar sem isso. O patcher de runtime do ColdClient lida com a maioria dos jogos automaticamente.</string>
+    <string name="shortcuts_properties_unpack_files_description">Remove o DRM SteamStub do exe. Operação única. Desative apenas se um jogo quebrar.</string>
     <string name="shortcuts_properties_force_dlc">Forcar DLC</string>
-    <string name="shortcuts_properties_force_dlc_description">Ative apenas se as DLCs nao forem detectadas ou saves com DLC nao estiverem funcionando</string>
+    <string name="shortcuts_properties_force_dlc_description">Ative se as DLCs nao forem detectadas ou saves com DLC nao funcionarem.</string>
     <string name="shortcuts_properties_launch_steam_client_beta">Iniciar Cliente Steam (Beta)</string>
-    <string name="shortcuts_properties_launch_steam_client_description">Inicia o cliente real do Steam no Wine\nRequer uma conta Steam e pode reduzir o desempenho\nNem todos os jogos funcionam</string>
+    <string name="shortcuts_properties_launch_steam_client_description">Executa o cliente real do Steam no Wine. Requer uma conta. Pode reduzir o desempenho; nem todos os jogos funcionam.</string>
     <string name="shortcuts_properties_steam_type">Desempenho do cliente Steam</string>
     <string name="steam_section_emulator">Emulador Steam (Goldberg)</string>
     <string name="steam_section_real_client">Cliente Steam real</string>
@@ -504,6 +504,7 @@
     <string name="container_graphics_bcn_emulation">Emulacao BCn</string>
     <string name="container_graphics_bcn_emulation_type">Tipo de Emulacao BCn</string>
     <string name="container_graphics_bcn_emulation_cache">Cache de Emulacao BCn</string>
+    <string name="shortcuts_graphics_sgsr_full_title">Snapdragon™ Super-resolução para jogos 1</string>
     <!-- Container > Presets -->
     <string name="container_presets_confirm_duplicate">Deseja duplicar esta predefinicao?</string>
     <string name="container_presets_confirm_remove">Deseja remover esta predefinicao?</string>
@@ -1037,7 +1038,6 @@ Caminho instalado:
     <string name="session_drawer_color_profile_hdr">HDR</string>
     <string name="session_drawer_color_profile_natural">Natural</string>
     <string name="session_drawer_color_profile_crt">Efeito CRT</string>
-    <string name="session_drawer_upscaler_dls">Vívido</string>
     <string name="session_drawer_calibrate_advanced">Calibração avançada</string>
     <string name="session_drawer_rail_label_hud">HUD</string>
     <string name="session_drawer_rail_label_gyro">Giro</string>
@@ -1063,9 +1063,11 @@ Caminho instalado:
     <string name="session_drawer_logs_share_chooser">Compartilhar logs da sessão</string>
     <string name="session_drawer_logs_share_failed">Falha ao compartilhar logs</string>
     <string name="session_drawer_logs_share_empty">Não há linhas de log para compartilhar</string>
-    <string name="session_drawer_super_resolution">Filtros de Nitidez</string>
-    <string name="session_drawer_upscaler_mode">Filtro</string>
-    <string name="session_drawer_upscaler_fsr">FSR 1</string>
+    <string name="session_drawer_super_resolution">Super-resolução</string>
+    <string name="session_drawer_upscaler_mode">Upscaler</string>
+    <string name="session_drawer_upscaler_fsr">SGSR 1</string>
+    <string name="session_drawer_vivid">Vívido</string>
+    <string name="session_drawer_vivid_strength">Intensidade do vívido</string>
     <string name="session_drawer_main_menu_title">Menu</string>
     <string name="session_gyroscope_activator">Ativador</string>
     <string name="settings_general_check_for_updates">Verificar atualizações</string>
@@ -1191,7 +1193,6 @@ Caminho instalado:
     <string name="session_drawer_hud_summary">Ajuste a visibilidade da sobreposição e os dados exibidos</string>
     <string name="session_drawer_screen_effects">Efeitos de Tela</string>
     <string name="session_drawer_session_section">Sessão</string>
-    <string name="session_drawer_sharpness">Nitidez</string>
     <string name="session_drawer_swipe_hint">Deslize para voltar ao jogo</string>
     <string name="session_gamepad_enable_vibration">Ativar Vibração</string>
     <string name="session_gyroscope_experimental_mouse_movement">Movimento de Mouse Experimental</string>
@@ -1211,6 +1212,32 @@ Caminho instalado:
     <string name="shortcuts_library_artwork_title">Arte da Biblioteca</string>
     <string name="shortcuts_list_readded_existing">Atalho existente readicionado</string>
     <string name="shortcuts_properties_runtime_patcher">Patcher DRM em Tempo de Execução</string>
-    <string name="shortcuts_properties_runtime_patcher_description">Injeta o patcher DRM em tempo de execução do Goldberg como DLL no jogo a cada inicialização. Contorna verificações anti-adulteração que sobrevivem ao processo de DRM Legado. Reduz significativamente o FPS — ative apenas se o jogo ainda falhar ao iniciar somente com DRM Legado.</string>
+    <string name="shortcuts_properties_runtime_patcher_description">Injeta uma DLL de patch DRM ao iniciar. Reduz FPS — use apenas se Unpack Files sozinho falhar.</string>
+    <!-- Cloud Saves > Custom save folder picker -->
+    <string name="cloud_saves_custom_select_folder">Selecionar pasta de saves</string>
+    <string name="cloud_saves_custom_folder_label">Pasta de saves</string>
+    <string name="cloud_saves_custom_select_folder_summary">Aponte para o diretório de saves dentro do contêiner</string>
+    <string name="cloud_saves_custom_no_container">Contêiner indisponível para este atalho</string>
+    <string name="cloud_saves_custom_picker_title">Selecionar pasta de saves</string>
+    <string name="cloud_saves_custom_outside_drive_c">A pasta selecionada deve estar dentro da unidade C: do contêiner</string>
+    <string name="cloud_saves_custom_path_map_failed">Não foi possível mapear a pasta selecionada para um caminho do Windows.</string>
+    <string name="cloud_saves_custom_folder_set">Pasta de saves definida como %1$s</string>
+
+    <!-- Cloud Saves > Steam Cloud actions -->
+    <string name="cloud_saves_steam_sync_label">Sincronizar do Steam Cloud</string>
+    <string name="cloud_saves_steam_sync_helper">Baixar save mais recente</string>
+    <string name="cloud_saves_steam_sync_success">Sincronizado do Steam Cloud</string>
+    <string name="cloud_saves_steam_sync_failed">Falha na sincronização do Steam Cloud</string>
+    <string name="cloud_saves_steam_browse_label">Navegar no Steam</string>
+    <string name="cloud_saves_steam_browse_helper">Abrir armazenamento em nuvem</string>
+    <string name="cloud_saves_steam_browse_no_browser">Nenhum navegador disponível para abrir a página do Steam</string>
+    <string name="cloud_saves_steam_import_label">Importar arquivos</string>
+    <string name="cloud_saves_steam_import_helper">Restaurar arquivos baixados</string>
+    <string name="cloud_saves_steam_import_picker_unavailable">Seletor de arquivos indisponível</string>
+    <string name="cloud_saves_steam_restore_overwrite_body">Isso baixará os arquivos de save atuais do Steam Cloud e substituirá os arquivos de save atuais.</string>
+
+    <!-- Cloud Saves > Internal result messages -->
+    <string name="cloud_saves_invalid_app_id">ID de app inválido</string>
+    <string name="cloud_saves_label_saved">Rótulo salvo</string>
 </resources>
 

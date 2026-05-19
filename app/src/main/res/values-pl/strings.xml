@@ -174,7 +174,7 @@
     <string name="library_games_no_games_hub">Brak zainstalowanych gier\nKliknij, aby otworzyć Winlator Backend</string>
     <string name="library_games_installed_badge">ZAINSTALOWANO</string>
     <string name="library_games_unknown_game">Nieznana gra</string>
-    <string name="library_games_layouts_header">UKŁADY</string>
+    <string name="library_games_layouts_header">UKŁADY BIBLIOTEKI</string>
     <string name="library_games_layout_carousel">Karuzela</string>
     <string name="library_games_layout_list">Lista</string>
     <string name="library_games_custom_game">Własna gra</string>
@@ -272,13 +272,13 @@
     <string name="shortcuts_properties_exclusive_input">Wyłączne wejście</string>
     <string name="shortcuts_properties_custom_game_settings">Własne ustawienia gry</string>
     <string name="shortcuts_properties_use_cold_client">Użyj ColdClient Launcher</string>
-    <string name="shortcuts_properties_use_cold_client_description">ColdClient to preferowany sposób obsługi emulacji Steam i DRM. Patchuje DRM w czasie działania bez modyfikowania plików gry.</string>
+    <string name="shortcuts_properties_use_cold_client_description">Preferowana metoda emulacji Steam. Patchuje DRM w czasie działania bez modyfikowania plików.</string>
     <string name="shortcuts_properties_unpack_files">Starsze DRM</string>
-    <string name="shortcuts_properties_unpack_files_description">Usuwa SteamStub DRM z exe na dysku. Włącz tylko jeśli gra nie uruchamia się bez tego. Patcher runtime ColdClient obsługuje większość gier automatycznie.</string>
+    <string name="shortcuts_properties_unpack_files_description">Usuwa SteamStub DRM z exe. Operacja jednorazowa. Wyłącz tylko wtedy, gdy gra przestaje działać.</string>
     <string name="shortcuts_properties_force_dlc">Wymuś DLC</string>
-    <string name="shortcuts_properties_force_dlc_description">Włącz tylko wtedy, gdy DLC nie są wykrywane lub zapisy z DLC nie działają</string>
+    <string name="shortcuts_properties_force_dlc_description">Włącz, gdy DLC nie są wykrywane lub zapisy z DLC nie działają.</string>
     <string name="shortcuts_properties_launch_steam_client_beta">Uruchom klienta Steam (Beta)</string>
-    <string name="shortcuts_properties_launch_steam_client_description">Uruchamia prawdziwego klienta Steam w Wine\nWymaga konta Steam i może obniżyć wydajność\nNie wszystkie gry działają</string>
+    <string name="shortcuts_properties_launch_steam_client_description">Uruchamia prawdziwego klienta Steam w Wine. Wymaga konta. Może obniżyć wydajność; nie wszystkie gry działają.</string>
     <string name="shortcuts_properties_steam_type">Wydajność klienta Steam</string>
     <string name="steam_section_emulator">Emulator Steam (Goldberg)</string>
     <string name="steam_section_real_client">Prawdziwy klient Steam</string>
@@ -508,6 +508,7 @@
     <string name="container_graphics_bcn_emulation">Emulacja BCn</string>
     <string name="container_graphics_bcn_emulation_type">Typ emulacji BCn</string>
     <string name="container_graphics_bcn_emulation_cache">Pamięć podręczna emulacji BCn</string>
+    <string name="shortcuts_graphics_sgsr_full_title">Snapdragon™ Superrozdzielczość w grach 1</string>
     <!-- Container > Presets -->
     <string name="container_presets_confirm_duplicate">Czy chcesz zduplikować ten preset?</string>
     <string name="container_presets_confirm_remove">Czy chcesz usunąć ten preset?</string>
@@ -1043,7 +1044,6 @@ Zainstalowana ścieżka:
     <string name="session_drawer_color_profile_hdr">HDR</string>
     <string name="session_drawer_color_profile_natural">Naturalny</string>
     <string name="session_drawer_color_profile_crt">Efekt CRT</string>
-    <string name="session_drawer_upscaler_dls">Żywy</string>
     <string name="session_drawer_calibrate_advanced">Zaawansowana kalibracja</string>
     <string name="session_drawer_rail_label_hud">HUD</string>
     <string name="session_drawer_rail_label_gyro">Gyro</string>
@@ -1069,9 +1069,11 @@ Zainstalowana ścieżka:
     <string name="session_drawer_logs_share_chooser">Udostępnij logi sesji</string>
     <string name="session_drawer_logs_share_failed">Nie udało się udostępnić logów</string>
     <string name="session_drawer_logs_share_empty">Brak wierszy logu do udostępnienia</string>
-    <string name="session_drawer_super_resolution">Filtry Wyostrzania</string>
-    <string name="session_drawer_upscaler_mode">Filtr</string>
-    <string name="session_drawer_upscaler_fsr">FSR 1</string>
+    <string name="session_drawer_super_resolution">Superrozdzielczość</string>
+    <string name="session_drawer_upscaler_mode">Upscaler</string>
+    <string name="session_drawer_upscaler_fsr">SGSR 1</string>
+    <string name="session_drawer_vivid">Żywe</string>
+    <string name="session_drawer_vivid_strength">Intensywność żywych kolorów</string>
     <string name="session_drawer_main_menu_title">Menu</string>
     <string name="session_gyroscope_activator">Aktywator</string>
     <string name="settings_general_check_for_updates">Sprawdź aktualizacje</string>
@@ -1197,7 +1199,6 @@ Zainstalowana ścieżka:
     <string name="session_drawer_hud_summary">Dostosuj widoczność nakładki i punkty danych</string>
     <string name="session_drawer_screen_effects">Efekty ekranu</string>
     <string name="session_drawer_session_section">Sesja</string>
-    <string name="session_drawer_sharpness">Ostrość</string>
     <string name="session_drawer_swipe_hint">Przesuń, aby wrócić do gry</string>
     <string name="session_gamepad_enable_vibration">Włącz wibracje</string>
     <string name="session_gyroscope_experimental_mouse_movement">Eksperymentalne ruchy myszy</string>
@@ -1217,6 +1218,32 @@ Zainstalowana ścieżka:
     <string name="shortcuts_library_artwork_title">Grafiki biblioteki</string>
     <string name="shortcuts_list_readded_existing">Ponownie dodano istniejący skrót</string>
     <string name="shortcuts_properties_runtime_patcher">Runtime DRM Patcher</string>
-    <string name="shortcuts_properties_runtime_patcher_description">Wstrzykuje łatacz DRM Goldberga (DLL) do gry przy każdym uruchomieniu. Omija kontrole anty-tamper, które przetrwają operację Rozpakuj pliki. Znacząco obniża FPS — włączaj tylko wtedy, gdy gra nadal nie uruchamia się wyłącznie z opcją Rozpakuj pliki.</string>
+    <string name="shortcuts_properties_runtime_patcher_description">Wstrzykuje DLL patchera DRM przy starcie. Obniża FPS — używaj tylko, gdy samo Unpack Files zawodzi.</string>
+    <!-- Cloud Saves > Custom save folder picker -->
+    <string name="cloud_saves_custom_select_folder">Wybierz folder zapisów</string>
+    <string name="cloud_saves_custom_folder_label">Folder zapisów</string>
+    <string name="cloud_saves_custom_select_folder_summary">Wskaż katalog zapisów wewnątrz kontenera</string>
+    <string name="cloud_saves_custom_no_container">Kontener nie jest dostępny dla tego skrótu</string>
+    <string name="cloud_saves_custom_picker_title">Wybierz folder zapisów</string>
+    <string name="cloud_saves_custom_outside_drive_c">Wybrany folder musi znajdować się na dysku C: kontenera</string>
+    <string name="cloud_saves_custom_path_map_failed">Nie udało się zmapować wybranego folderu na ścieżkę Windows.</string>
+    <string name="cloud_saves_custom_folder_set">Folder zapisów ustawiono na %1$s</string>
+
+    <!-- Cloud Saves > Steam Cloud actions -->
+    <string name="cloud_saves_steam_sync_label">Synchronizuj ze Steam Cloud</string>
+    <string name="cloud_saves_steam_sync_helper">Pobierz najnowszy zapis</string>
+    <string name="cloud_saves_steam_sync_success">Zsynchronizowano ze Steam Cloud</string>
+    <string name="cloud_saves_steam_sync_failed">Synchronizacja Steam Cloud nie powiodła się</string>
+    <string name="cloud_saves_steam_browse_label">Przeglądaj Steam</string>
+    <string name="cloud_saves_steam_browse_helper">Otwórz magazyn w chmurze</string>
+    <string name="cloud_saves_steam_browse_no_browser">Brak dostępnej przeglądarki do otwarcia strony Steam</string>
+    <string name="cloud_saves_steam_import_label">Importuj pliki</string>
+    <string name="cloud_saves_steam_import_helper">Przywróć pobrane pliki</string>
+    <string name="cloud_saves_steam_import_picker_unavailable">Wybór plików jest niedostępny</string>
+    <string name="cloud_saves_steam_restore_overwrite_body">Spowoduje to pobranie bieżących plików zapisów ze Steam Cloud i nadpisanie bieżących plików zapisów.</string>
+
+    <!-- Cloud Saves > Internal result messages -->
+    <string name="cloud_saves_invalid_app_id">Nieprawidłowy identyfikator aplikacji</string>
+    <string name="cloud_saves_label_saved">Etykieta zapisana</string>
 </resources>
 
