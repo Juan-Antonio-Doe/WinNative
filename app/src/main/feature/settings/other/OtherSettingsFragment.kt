@@ -168,6 +168,14 @@ class OtherSettingsFragment : Fragment() {
                             preferences.edit { putBoolean("hud_record_to_file", checked) }
                             refresh()
                         },
+                        onEnableBackgroundSessionChanged = { checked ->
+                            preferences.edit { putBoolean("enable_background_session", checked) }
+                            refresh()
+                        },
+                        onPauseContainerCompletelyOnBackgroundChanged = { checked ->
+                            preferences.edit { putBoolean("pause_wine_on_background", checked) }
+                            refresh()
+                        },
                         onRunSetupWizard = {
                             startActivity(SetupWizardActivity.createManualRerunIntent(ctx))
                         },
@@ -233,6 +241,8 @@ class OtherSettingsFragment : Fragment() {
                 openInBrowser = preferences.getBoolean("open_with_android_browser", false),
                 shareClipboard = preferences.getBoolean("share_android_clipboard", false),
                 recordPerformanceToFile = preferences.getBoolean("hud_record_to_file", false),
+                enableBackgroundSession = preferences.getBoolean("enable_background_session", false),
+                pauseContainerCompletelyOnBackground = preferences.getBoolean("pause_wine_on_background", false),
                 imagefsInstallProgress = uiState.imagefsInstallProgress,
             )
     }

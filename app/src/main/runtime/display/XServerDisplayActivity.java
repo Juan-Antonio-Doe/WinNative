@@ -1194,7 +1194,9 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         cachedContainerLabel = container != null ? container.getName() : "";
         showLaunchPreloader(getString(R.string.preloader_initializing));
 
-        SessionKeepAliveService.startSession(this);
+        if (preferences.getBoolean("enable_background_session", false)) {
+            SessionKeepAliveService.startSession(this);
+        }
 
         inputControlsManager = new InputControlsManager(this);
         sgsrBaseScreenSize = screenSize;
@@ -1767,9 +1769,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
         startTime = System.currentTimeMillis();
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
-        if (!cleaningUp && !isPaused) {
-            ProcessHelper.resumeAllWineProcesses();
-            SessionKeepAliveService.onResumeSession(this);
+
+        if (preferences.getBoolean("pause_wine_on_background", false)) {
+            if (!cleaningUp && !isPaused) {
+                ProcessHelper.resumeAllWineProcesses();
+                SessionKeepAliveService.onResumeSession(this);
+            }
         }
 
         // Resume task-manager polling only if the pane is still the active selection.
@@ -1780,8 +1785,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public void onPause() {
-        SessionKeepAliveService.onPauseSession(this);
-
         super.onPause();
         isVolumeUpPressed = false;
         isVolumeDownPressed = false;
@@ -1801,6 +1804,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 environment.onPause();
                 xServerView.onPause();
             }
+
+            if (preferences.getBoolean("pause_wine_on_background", false)) {
+                SessionKeepAliveService.onPauseSession(this);
+                ProcessHelper.pauseAllWineProcesses();
+                isPaused = true;
+            }
         }
 
         if (touchpadView != null) {
@@ -1812,9 +1821,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
         savePlaytimeData();
         handler.removeCallbacks(savePlaytimeRunnable);
-        if (!cleaningUp) {
-            ProcessHelper.pauseAllWineProcesses();
-        }
 
         // Suspend task-manager polling while backgrounded; onResume restarts it
         // if the pane is still the active selection.
@@ -1824,8 +1830,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             if (winHandler != null) winHandler.setOnGetProcessInfoListener(null);
             taskManagerAccum.clear();
         }
-
-        isPaused = true;
     }
 
     private void savePlaytimeData() {

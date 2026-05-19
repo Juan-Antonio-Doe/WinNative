@@ -38,6 +38,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.BatterySaver
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -114,6 +115,8 @@ data class OtherSettingsState(
     val openInBrowser: Boolean = false,
     val shareClipboard: Boolean = false,
     val recordPerformanceToFile: Boolean = false,
+    val enableBackgroundSession: Boolean = false,
+    val pauseContainerCompletelyOnBackground: Boolean = false,
     val imagefsInstallProgress: Int? = null,
 )
 
@@ -156,6 +159,8 @@ fun OtherSettingsScreen(
     onOpenInBrowserChanged: (Boolean) -> Unit,
     onShareClipboardChanged: (Boolean) -> Unit,
     onRecordPerformanceToFileChanged: (Boolean) -> Unit,
+    onEnableBackgroundSessionChanged: (Boolean) -> Unit,
+    onPauseContainerCompletelyOnBackgroundChanged: (Boolean) -> Unit,
     onRunSetupWizard: () -> Unit,
     onReinstallImagefs: () -> Unit,
 ) {
@@ -290,6 +295,31 @@ fun OtherSettingsScreen(
                 checked = state.xinputDisabled,
                 onCheckedChange = onXinputDisabledChanged,
             )
+        }
+
+        item(key = "background_session_card") {
+            SettingsToggleCard(
+                title = stringResource(R.string.settings_general_background),
+                subtitle = "Keep session alive while in background",
+                icon = Icons.Outlined.Visibility,
+                checked = state.enableBackgroundSession,
+                onCheckedChange = onEnableBackgroundSessionChanged,
+            )
+        }
+
+        if (state.enableBackgroundSession) {
+            item(key = "pause_wine_on_background_card") {
+                Row(modifier = Modifier.padding(start = 16.dp)) {
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_general_background_pause_container_completely),
+                        subtitle = "Suspend Wine processes in background to save battery" +
+                                "\n Some OS versions may cause issues with this enabled.",
+                        icon = Icons.Outlined.BatterySaver,
+                        checked = state.pauseContainerCompletelyOnBackground,
+                        onCheckedChange = onPauseContainerCompletelyOnBackgroundChanged,
+                    )
+                }
+            }
         }
 
         item(key = "integration_section") {

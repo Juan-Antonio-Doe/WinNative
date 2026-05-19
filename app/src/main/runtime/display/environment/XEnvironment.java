@@ -1,7 +1,11 @@
 package com.winlator.cmod.runtime.display.environment;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.util.Log;
+
+import androidx.preference.PreferenceManager;
+
 import com.winlator.cmod.runtime.display.environment.components.GuestProgramLauncherComponent;
 import com.winlator.cmod.shared.io.FileUtils;
 import java.io.File;
@@ -11,6 +15,7 @@ import java.util.Iterator;
 public class XEnvironment implements Iterable<EnvironmentComponent> {
   private static final String TAG = "XEnvironment";
   private final Context context;
+  private SharedPreferences preferences;
   private final ImageFs imageFs;
   private final ArrayList<EnvironmentComponent> components = new ArrayList<>();
 
@@ -87,14 +92,26 @@ public class XEnvironment implements Iterable<EnvironmentComponent> {
   }
 
   public void onPause() {
+    if (!shouldPauseOnBackground()) return;
     GuestProgramLauncherComponent guestProgramLauncherComponent =
         getComponent(GuestProgramLauncherComponent.class);
     if (guestProgramLauncherComponent != null) guestProgramLauncherComponent.suspendProcess();
   }
 
   public void onResume() {
+    if (!shouldPauseOnBackground()) return;
     GuestProgramLauncherComponent guestProgramLauncherComponent =
         getComponent(GuestProgramLauncherComponent.class);
     if (guestProgramLauncherComponent != null) guestProgramLauncherComponent.resumeProcess();
   }
+
+  private boolean shouldPauseOnBackground() {
+    if (preferences == null) {
+      // Set preferences if context doesn't return null
+      preferences = context != null ? PreferenceManager.getDefaultSharedPreferences(context) : null;
+    }
+    // Default to false if preferences is null, otherwise return the value from preferences
+    return preferences != null && preferences.getBoolean("pause_on_background", false);
+  }
+
 }

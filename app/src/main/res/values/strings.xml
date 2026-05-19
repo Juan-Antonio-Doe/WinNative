@@ -859,6 +859,7 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="settings_general_theme">Theme</string>
     <string name="settings_general_background">Background</string>
     <string name="settings_general_background_color_hex">Color (hex)</string>
+    <string name="settings_general_background_pause_container_completely">Pause all container processes when going to background</string>
     <string name="settings_general_wallpaper_selected">Wallpaper selected</string>
     <string name="settings_general_select_wallpaper">Select wallpaper</string>
     <string name="settings_general_title">General</string>
