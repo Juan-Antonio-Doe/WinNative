@@ -90,7 +90,35 @@ object Downloader {
         return downloadFile(originalUrl, file, listener)
     }
 
-    private fun ensureFileMap() {
+    @JvmStatic
+    fun resolveWinNativeUrl(filename: String?): String? {
+        if (filename == null) return null
+        ensureFileMap()
+        return fileMap[filename.lowercase(Locale.ROOT)]
+    }
+
+    @JvmStatic
+    fun resolveWinNativeUrl(contentType: String?, filename: String?): String? = resolveWinNativeUrl(filename)
+
+    @JvmStatic
+    fun clearFileMap() {
+        synchronized(mapLock) {
+            fileMap.clear()
+            fileMapReady = false
+            fileMapCacheFile()?.let {
+                if (it.exists() && !it.delete() && logEnabled()) {
+                    Log.w(TAG, "Unable to delete WinNative file map cache: ${it.absolutePath}")
+                }
+            }
+        }
+    }
+
+    @JvmStatic
+    @Deprecated("Use clearFileMap() instead.", ReplaceWith("clearFileMap()"))
+    fun clearDirectoryCache() = clearFileMap()
+
+    @JvmStatic
+    fun ensureFileMap() {
         if (fileMapReady) return
         synchronized(mapLock) {
             if (fileMapReady) return

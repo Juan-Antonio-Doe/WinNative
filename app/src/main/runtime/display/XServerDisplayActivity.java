@@ -1,12 +1,7 @@
 package com.winlator.cmod.runtime.display;
 
-import android.Manifest;
 import android.annotation.SuppressLint;
-import android.app.Activity;
 import android.app.ActivityManager;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ShortcutManager;
@@ -48,11 +43,7 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
-import androidx.core.app.ActivityCompat;
-import androidx.core.app.NotificationCompat;
-import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.FileProvider;
 import androidx.compose.ui.platform.ComposeView;
 import androidx.core.view.WindowInsetsCompat;
@@ -100,6 +91,7 @@ import com.winlator.cmod.shared.util.Callback;
 import com.winlator.cmod.shared.util.OnExtractFileListener;
 import com.winlator.cmod.shared.ui.dialog.PreloaderDialog;
 import com.winlator.cmod.runtime.system.ProcessHelper;
+import com.winlator.cmod.runtime.system.SessionKeepAliveService;
 import com.winlator.cmod.shared.android.RefreshRateUtils;
 import com.winlator.cmod.shared.util.StringUtils;
 import com.winlator.cmod.shared.io.TarCompressorUtils;
@@ -191,8 +183,6 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import cn.sherlock.com.sun.media.sound.SF2Soundbank;
 
 public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
-    public static String NOTIFICATION_CHANNEL_ID = "Winlator";
-    public static int NOTIFICATION_ID = -1;
     private static final long STEAM_TERMINATION_GRACE_MS = 10000L;
     private static final long STEAM_TERMINATION_POLL_MS = 1000L;
     private static final long STEAM_PROCESS_RESPONSE_TIMEOUT_MS = 2000L;
@@ -332,7 +322,14 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     PreloaderDialog preloaderDialog = null;
     private Runnable configChangedCallback = null;
     private boolean isPaused = false;
+    private boolean isActivityPaused = false;
+    private boolean reusingSession = false;
     private boolean isRelativeMouseMovement = false;
+
+    public boolean isPaused() { return isPaused; }
+    public boolean isInputSuspended() {
+        return isPaused || (isActivityPaused && !isInPictureInPictureMode());
+    }
     private boolean isNativeRenderingEnabled = true;
 
     private float hudTransparency = 1.0f;
@@ -437,16 +434,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             }
         }
     };
-
-    private void createNotifcationChannel() {
-        String name = "WinNative";
-        String description = getString(R.string.session_xserver_notification_description);
-        int importance = NotificationManager.IMPORTANCE_LOW;
-        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance);
-        channel.setDescription(description);
-        NotificationManager notificationManager = getSystemService(NotificationManager.class);
-        notificationManager.createNotificationChannel(channel);
-    }
 
     @Override
     public void onConfigurationChanged(@NonNull Configuration newConfig) {
@@ -1227,6 +1214,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         cachedContainerLabel = container != null ? container.getName() : "";
         showLaunchPreloader(getString(R.string.preloader_initializing));
 
+        if (preferences.getBoolean("enable_background_session", false)) {
+            SessionKeepAliveService.startSession(this);
+        }
+
         inputControlsManager = new InputControlsManager(this);
         sgsrBaseScreenSize = screenSize;
         String effectiveScreenSize =
@@ -1314,20 +1305,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         // Check if a profile is defined by the shortcut
         String controlsProfile = shortcut != null ? shortcut.getExtra("controlsProfile", "") : "";
 
-        createNotifcationChannel();
-
-        Intent notificationIntent = new Intent(this, XServerDisplayActivity.class);
-        PendingIntent pendingIntent = PendingIntent.getActivity(this, 0, notificationIntent, PendingIntent.FLAG_IMMUTABLE);
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_stat_ab_gear_0011)
-                .setContentTitle("WinNative")
-                .setContentText(getString(R.string.session_xserver_notification_content))
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setContentIntent(pendingIntent)
-                .setAutoCancel(false);
-
-        NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, builder.build());
-
         Runnable runnable = () -> {
             setupUI();
             if (controlsProfile.isEmpty()) {
@@ -1335,27 +1312,39 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 simulateConfirmInputControlsDialog();
             }
             Executors.newSingleThreadExecutor().execute(() -> {
+                // RE-ATTACH FIX: Detect active session early to skip heavy blocking setup
+                boolean sessionToReuse = SessionKeepAliveService.isSessionActive() &&
+                        SessionKeepAliveService.getActiveEnvironment() != null &&
+                        SessionKeepAliveService.getActiveXServer() != null;
+
                 // Cancel any pending post-game update check since we're launching a new game
                 UpdateChecker.INSTANCE.cancelPostGameCheck();
 
-                SteamLaunchCloudSync.syncBeforeLaunch(
-                        this,
-                        shortcut,
-                        isCloudSyncEnabledForShortcut(),
-                        this::showLaunchPreloader);
-                EpicLaunchCloudSync.syncBeforeLaunch(
-                        this,
-                        shortcut,
-                        isCloudSyncEnabledForShortcut(),
-                        this::showLaunchPreloader);
-                GogLaunchCloudSync.syncBeforeLaunch(
-                        this,
-                        shortcut,
-                        isCloudSyncEnabledForShortcut(),
-                        this::showLaunchPreloader);
-                setupWineSystemFiles();
-                extractGraphicsDriverFiles();
-                changeWineAudioDriver();
+                if (!sessionToReuse) {
+                    SteamLaunchCloudSync.syncBeforeLaunch(
+                            this,
+                            shortcut,
+                            isCloudSyncEnabledForShortcut(),
+                            this::showLaunchPreloader);
+                    EpicLaunchCloudSync.syncBeforeLaunch(
+                            this,
+                            shortcut,
+                            isCloudSyncEnabledForShortcut(),
+                            this::showLaunchPreloader);
+                    GogLaunchCloudSync.syncBeforeLaunch(
+                            this,
+                            shortcut,
+                            isCloudSyncEnabledForShortcut(),
+                            this::showLaunchPreloader);
+                    setupWineSystemFiles();
+                    extractGraphicsDriverFiles();
+                    changeWineAudioDriver();
+                } else {
+                    Log.i("XServerDisplayActivity", "Skipping pre-game setup for active background session");
+                    // Still need to ensure refresh rate is applied for the new Activity window
+                    applyPreferredRefreshRate();
+                }
+
                 try {
                     setupXEnvironment();
                 } catch (PackageManager.NameNotFoundException e) {
@@ -1789,6 +1778,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public void onResume() {
+        isActivityPaused = false;
         super.onResume();
         applyPreferredRefreshRate();
         boolean gyroEnabled = preferences.getBoolean("gyro_enabled", false);
@@ -1804,16 +1794,20 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             xServerView.onResume();
             environment.onResume();
         }
+
         if (inputControlsView != null && touchpadView != null) {
             ControlsProfile activeProfile = inputControlsView.getProfile();
             if (activeProfile == null) activeProfile = resolvePreferredStartupProfile();
             if (activeProfile != null) showInputControls(activeProfile);
             else startTouchscreenTimeout();
         }
+
         startTime = System.currentTimeMillis();
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
-        if (!cleaningUp) {
+
+        if (!cleaningUp && !isPaused) {
             ProcessHelper.resumeAllWineProcesses();
+            SessionKeepAliveService.onResumeSession(this);
         }
 
         // Resume task-manager polling only if the pane is still the active selection.
@@ -1824,6 +1818,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public void onPause() {
+        isActivityPaused = true;
         super.onPause();
         isVolumeUpPressed = false;
         isVolumeDownPressed = false;
@@ -1838,7 +1833,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         boolean cleaningUp = exitRequested.get() || sessionCleanupStarted.get() || activityDestroyed.get();
 
         if (!cleaningUp && !isInPictureInPictureMode()) {
-            // Only pause environment and xServerView if not in PiP mode
             if (environment != null) {
                 environment.onPause();
                 xServerView.onPause();
@@ -1854,8 +1848,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
         savePlaytimeData();
         handler.removeCallbacks(savePlaytimeRunnable);
-        if (!cleaningUp) {
+
+        if (!cleaningUp && !preferences.getBoolean("enable_background_session", false)) {
             ProcessHelper.pauseAllWineProcesses();
+            SessionKeepAliveService.onPauseSession(this);
         }
 
         // Suspend task-manager polling while backgrounded; onResume restarts it
@@ -2002,7 +1998,15 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
                 while (!exitRequested.get()
                         && !activityDestroyed.get()
-                        && System.currentTimeMillis() - startTime < STEAM_TERMINATION_TIMEOUT_MS) {
+                        && (System.currentTimeMillis() - startTime) < STEAM_TERMINATION_TIMEOUT_MS) {
+                    
+                    if (isPaused || isActivityPaused) {
+                        startTime += STEAM_TERMINATION_POLL_MS;
+                        if (lastNonCoreSeenAt > 0) lastNonCoreSeenAt += STEAM_TERMINATION_POLL_MS;
+                        Thread.sleep(STEAM_TERMINATION_POLL_MS);
+                        continue;
+                    }
+
                     ArrayList<ProcessInfo> snapshot = captureWinHandlerProcessSnapshot();
                     if (snapshot != null) {
                         ArrayList<String> activeNames = new ArrayList<>();
@@ -2057,6 +2061,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     }
 
     private void cleanupLingeringSessionProcesses(String reason) {
+        if (SessionKeepAliveService.isSessionActive()) {
+            Log.d("XServerDisplayActivity", "Skipping lingering process cleanup from " + reason + " — session is active in background");
+            return;
+        }
         ArrayList<String> before = ProcessHelper.listRunningWineProcesses();
         if (before.isEmpty()) return;
 
@@ -2306,6 +2314,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         Log.w("XServerLeakCheck", "Starting forced session cleanup from " + trigger);
         Log.d("XServerLeakCheck", "Forced cleanup initial process snapshot: "
                 + ProcessHelper.listRunningWineProcessDetails());
+
+        // Perform UI-sensitive teardown on Main thread before backgrounding the rest
         try {
             if (playtimePrefs != null) {
                 savePlaytimeData(true);
@@ -2316,67 +2326,68 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         cleanupActivityCallbacks("forced cleanup (" + trigger + ")");
 
         try {
-            AppTerminationHelper.stopManagedServices(getApplicationContext(), "xserver_forced_cleanup_" + trigger);
-        } catch (Exception e) {
-            Log.w("XServerLeakCheck", "Failed to stop managed services during forced cleanup", e);
-        }
-
-        try {
             if (preloaderDialog != null) preloaderDialog.close();
         } catch (Exception e) {
             Log.w("XServerLeakCheck", "Failed to close preloader during forced cleanup", e);
         }
 
-        try {
-            if (midiHandler != null) {
-                midiHandler.stop();
-                midiHandler = null;
+        new Thread(() -> {
+            try {
+                AppTerminationHelper.stopManagedServices(getApplicationContext(), "xserver_forced_cleanup_" + trigger);
+            } catch (Exception e) {
+                Log.w("XServerLeakCheck", "Failed to stop managed services during forced cleanup", e);
             }
-        } catch (Exception e) {
-            Log.e("XServerLeakCheck", "Failed to stop MidiHandler during forced cleanup", e);
-        }
 
-        try {
-            stopWinHandler("forced cleanup (" + trigger + ")");
-        } catch (Exception e) {
-            Log.e("XServerLeakCheck", "Failed to stop WinHandler during forced cleanup", e);
-        }
-
-        try {
-            if (wineRequestHandler != null) {
-                wineRequestHandler.stop();
-                wineRequestHandler = null;
+            try {
+                if (midiHandler != null) {
+                    midiHandler.stop();
+                    midiHandler = null;
+                }
+            } catch (Exception e) {
+                Log.e("XServerLeakCheck", "Failed to stop MidiHandler during forced cleanup", e);
             }
-        } catch (Exception e) {
-            Log.e("XServerLeakCheck", "Failed to stop WineRequestHandler during forced cleanup", e);
-        }
 
-        ArrayList<String> remaining = ProcessHelper.terminateSessionProcessesAndWait(2000, true);
-        ProcessHelper.drainDeadChildren("forced cleanup (" + trigger + ")");
-        ProcessHelper.scheduleDeadChildReapSweep("forced cleanup (" + trigger + ")", 4000, 200);
-
-        try {
-            if (environment != null) {
-                environment.stopEnvironmentComponents();
-                environment = null;
+            try {
+                stopWinHandler("forced cleanup (" + trigger + ")");
+            } catch (Exception e) {
+                Log.e("XServerLeakCheck", "Failed to stop WinHandler during forced cleanup", e);
             }
-        } catch (Exception e) {
-            Log.e("XServerLeakCheck", "Failed to stop environment during forced cleanup", e);
-        }
 
-        stopXServer("forced cleanup (" + trigger + ")");
-        xServer = null;
-        xServerView = null;
+            try {
+                if (wineRequestHandler != null) {
+                    wineRequestHandler.stop();
+                    wineRequestHandler = null;
+                }
+            } catch (Exception e) {
+                Log.e("XServerLeakCheck", "Failed to stop WineRequestHandler during forced cleanup", e);
+            }
 
-        if (remaining.isEmpty()) {
-            Log.i("XServerLeakCheck", "Forced session cleanup finished cleanly after " + trigger);
-        } else {
-            Log.e("XServerLeakCheck", "Remaining leaked session processes after forced cleanup from " + trigger + ": "
-                    + ProcessHelper.listRunningWineProcessDetails());
-        }
-        Log.d("XServerLeakCheck", "Forced cleanup final process snapshot: "
-                + ProcessHelper.listRunningWineProcessDetails());
-        cleanupDebugDialog("forced cleanup (" + trigger + ")");
+            ArrayList<String> remaining = ProcessHelper.terminateSessionProcessesAndWait(2000, true);
+            ProcessHelper.drainDeadChildren("forced cleanup (" + trigger + ")");
+            ProcessHelper.scheduleDeadChildReapSweep("forced cleanup (" + trigger + ")", 4000, 200);
+
+            try {
+                if (environment != null) {
+                    environment.stopEnvironmentComponents();
+                    environment = null;
+                }
+            } catch (Exception e) {
+                Log.e("XServerLeakCheck", "Failed to stop environment during forced cleanup", e);
+            }
+
+            stopXServer("forced cleanup (" + trigger + ")");
+            xServer = null;
+            xServerView = null;
+
+            if (remaining.isEmpty()) {
+                Log.i("XServerLeakCheck", "Forced session cleanup finished cleanly after " + trigger);
+            } else {
+                Log.e("XServerLeakCheck", "Remaining leaked session processes after forced cleanup from " + trigger + ": "
+                        + ProcessHelper.listRunningWineProcessDetails());
+            }
+            
+            runOnUiThread(() -> cleanupDebugDialog("forced cleanup (" + trigger + ")"));
+        }, "XServerForcedCleanup").start();
     }
 
     private void exit() {
@@ -2389,7 +2400,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             return;
         }
 
-        NotificationManagerCompat.from(this).cancel(NOTIFICATION_ID);
         if (shortcutName != null && !shortcutName.isEmpty()) {
             preloaderDialog.showOnUiThread("Closing " + shortcutName + "...");
         } else {
@@ -2432,6 +2442,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                     xServerView = null;
                     if (preloaderDialog != null && preloaderDialog.isShowing()) preloaderDialog.closeOnUiThread();
                     cleanupDebugDialog("exit");
+                    SessionKeepAliveService.stopSession(XServerDisplayActivity.this);
                     closeAfterSessionExit();
                 }
             }, 1000);
@@ -2892,6 +2903,17 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 multicastLock.release();
             } catch (Exception ignored) {}
         }
+
+        // LEAK FIX: Explicitly destroy the renderer to unregister listeners from the persistent XServer
+        if (xServerView != null) {
+            VulkanRenderer renderer = xServerView.getRenderer();
+            if (renderer != null) renderer.destroy();
+        }
+
+        if (exitRequested.get()) {
+            SessionKeepAliveService.stopSession(this);
+        }
+
         super.onDestroy();
         // Schedule a deferred update check 10 s after game exit
         if (!switchLaunchInProgress.get()) {
@@ -2899,7 +2921,9 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
 
         if (!sessionCleanupStarted.get()) {
-            performForcedSessionCleanup("onDestroy");
+            if (exitRequested.get() || !preferences.getBoolean("enable_background_session", false)) {
+                performForcedSessionCleanup("onDestroy");
+            }
         }
 
         // Leak detection: log warnings if resources were not cleaned up by exit()
@@ -3905,9 +3929,13 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             case R.id.main_menu_pause:
                 if (isPaused) {
                     ProcessHelper.resumeAllWineProcesses();
+                    SessionKeepAliveService.onResumeSession(this);
                 }
                 else {
                     ProcessHelper.pauseAllWineProcesses();
+                    SessionKeepAliveService.onPauseSession(this);
+                    if (touchpadView != null) touchpadView.resetInputState();
+                    if (inputControlsView != null) inputControlsView.cancelActiveTouches();
                 }
                 isPaused = !isPaused;
                 renderDrawerMenu();
@@ -4590,6 +4618,25 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     }
 
     private void setupXEnvironment() throws PackageManager.NameNotFoundException {
+        if (SessionKeepAliveService.isSessionActive()) {
+            XEnvironment existingEnv = SessionKeepAliveService.getActiveEnvironment();
+            XServer existingXServer = SessionKeepAliveService.getActiveXServer();
+            if (existingEnv != null && existingXServer != null) {
+                Log.i("XServerDisplayActivity", "Re-attaching to existing background session environment");
+                this.environment = existingEnv;
+                this.xServer = existingXServer;
+                this.environment.setContext(this);
+                this.reusingSession = true;
+
+                // Re-bind winHandler to the existing server state
+                this.xServer.setWinHandler(winHandler);
+                
+                // Get the existing launcher component so we can track its status
+                this.guestProgramLauncherComponent = environment.getComponent(GuestProgramLauncherComponent.class);
+                return;
+            }
+        }
+
         cleanupLingeringSessionProcesses("new launch");
 
         // Set environment variables
@@ -4849,11 +4896,14 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         winHandler.preAssignConnectedControllers();
 
         // Start all environment components (XServer, Audio, etc.)
-        environment.startEnvironmentComponents();
+        if (!reusingSession) {
+            environment.startEnvironmentComponents();
+            SessionKeepAliveService.setActiveEnvironment(environment);
+            SessionKeepAliveService.setActiveXServer(xServer);
+        }
 
-        // Start the WinHandler
+        // Start the WinHandler (always start for each new Activity instance, even when re-attaching)
         winHandler.start();
-
         if (wineRequestHandler != null) wineRequestHandler.start();
 
         // Reset dxwrapper config
@@ -5514,6 +5564,16 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
+        handleDrawerEdgeSwipe(event); // Allow edge swipe to open drawer even when container is paused.
+
+        // Avoid processing touch events when paused, except for allowing drawer edge swipe to open the drawer
+        // Fix for an 'ANR Input dispatching timed out' exception that crashes the app.
+        if (isInputSuspended() && (drawerStateHolder == null ||
+                (!drawerStateHolder.isDrawerOpen() && !drawerStateHolder.isPaneOpen()))) {
+
+            return true;
+        }
+
         return super.dispatchTouchEvent(event);
     }
 
@@ -5588,10 +5648,17 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchGenericMotionEvent(MotionEvent event) {
+//        if (isPaused) return super.dispatchGenericMotionEvent(event);
+        if (isInputSuspended() && (drawerStateHolder == null ||
+                (!drawerStateHolder.isDrawerOpen() && !drawerStateHolder.isPaneOpen()))) {
+
+            return true;
+        }
+
         boolean handledByWinHandler = false;
         boolean handledByTouchpadView = false;
 
-        if (isPointerMotionEvent(event) && touchpadView != null) {
+        if (!isInputSuspended() && isPointerMotionEvent(event) && touchpadView != null) {
             if (shouldUsePointerCapture() && !touchpadView.hasPointerCapture()) {
                 updatePointerCapture();
             }
@@ -5602,7 +5669,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             return true;
         }
 
-        if (isControllerMotionEvent(event)) {
+        if (!isInputSuspended() && isControllerMotionEvent(event)) {
             cancelMousePointerTimeout();
             if (touchpadView != null) {
                 touchpadView.cancelMousePointerTimeout();
@@ -5628,6 +5695,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
+        if (isInputSuspended()) return super.dispatchKeyEvent(event);
         if (ExternalController.isGameController(event.getDevice())) {
             cancelMousePointerTimeout();
             if (touchpadView != null) {

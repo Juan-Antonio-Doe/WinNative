@@ -496,6 +496,7 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
     private val storageGranted = mutableStateOf(false)
     private val notifGranted = mutableStateOf(false)
     private val notifDenied = mutableStateOf(false)
+    private val backgroundSessionEnabled = mutableStateOf(false)
 
     private val pageIndex = mutableIntStateOf(0)
     private val imageFsInstalling = mutableStateOf(false)
@@ -522,14 +523,16 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
         ) {
             storageGranted.value = hasStoragePermission()
         }
-
     private val notifPermLauncher =
         registerForActivityResult(
             ActivityResultContracts.RequestPermission(),
         ) { granted ->
             notifGranted.value = granted
             notifDenied.value = !granted
-            if (!granted && Build.VERSION.SDK_INT >= 33 &&
+            if (granted) {
+                backgroundSessionEnabled.value = true
+                prefs(this).edit().putBoolean("enable_background_session", true).apply()
+            } else if (Build.VERSION.SDK_INT >= 33 &&
                 !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
             ) {
                 openNotificationSettings()
@@ -565,6 +568,7 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
 
         storageGranted.value = hasStoragePermission()
         notifGranted.value = hasNotificationPermissionSilently()
+        backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", false)
         refreshWizardState()
         loadAdvancedProfiles()
 
@@ -588,7 +592,10 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
         storageGranted.value = hasStoragePermission()
         val notificationsEnabled = hasNotificationPermissionSilently()
         notifGranted.value = notificationsEnabled
-        if (notificationsEnabled) notifDenied.value = false
+        if (notificationsEnabled) {
+            notifDenied.value = false
+        }
+        backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", false)
         refreshWizardState()
         refreshRecommendedPackageCache()
     }
@@ -663,6 +670,12 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
     }
 
     private fun requestNotifications() {
+        if (hasNotificationPermissionSilently()) {
+            backgroundSessionEnabled.value = true
+            prefs(this).edit().putBoolean("enable_background_session", true).apply()
+            return
+        }
+
         if (Build.VERSION.SDK_INT >= 33 && applicationInfo.targetSdkVersion >= 33) {
             if (notifDenied.value) {
                 openNotificationSettings()
@@ -699,6 +712,9 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
         imageFsInstalling.value = true
         imageFsProgress.intValue = 0
 
+        val keepAliveTag = "imagefs_install"
+        com.winlator.cmod.runtime.system.SessionKeepAliveService.startDownload(this, keepAliveTag)
+
         ImageFsInstaller.installFromAssets(
             this,
             object : ImageFsInstaller.ProgressListener {
@@ -724,6 +740,10 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
                             imageFsInstalling.value = false
                             wizardError.value = "ImageFS install failed. Check available storage and try again."
                         }
+                        com.winlator.cmod.runtime.system.SessionKeepAliveService.stopDownload(
+                            applicationContext,
+                            keepAliveTag,
+                        )
                     }
                 }
             },
@@ -1112,88 +1132,99 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
                 .filter { isRecommendedSpec(it) && it.verName !in advancedInstalledSet }
         if (pending.isEmpty()) return
 
+        val keepAliveTag = "install_recommended_${System.currentTimeMillis()}"
+        com.winlator.cmod.runtime.system.SessionKeepAliveService.startDownload(this, keepAliveTag)
         lifecycleScope.launch {
-            wizardError.value = null
-            for ((index, spec) in pending.withIndex()) {
-                val title = getString(R.string.setup_wizard_recommended_components)
-                val profile =
-                    withContext(Dispatchers.IO) {
-                        try {
-                            updateTransferState(
-                                TransferState(
-                                    title = title,
-                                    detail = getString(R.string.setup_wizard_downloading, spec.verName),
-                                    currentIndex = index + 1,
-                                    total = pending.size,
-                                    progress = 0f,
-                                ),
-                            )
-                            val downloaded =
-                                downloadFileToCache(
-                                    label = spec.verName,
-                                    url = spec.remoteUrl,
-                                    currentIndex = index + 1,
-                                    total = pending.size,
-                                    title = title,
+            updateWizardError(null)
+            try {
+                for ((index, spec) in pending.withIndex()) {
+                    val title = getString(R.string.setup_wizard_recommended_components)
+                    val profile =
+                        withContext(Dispatchers.IO) {
+                            try {
+                                updateTransferState(
+                                    TransferState(
+                                        title = title,
+                                        detail = getString(R.string.setup_wizard_downloading, spec.verName),
+                                        currentIndex = index + 1,
+                                        total = pending.size,
+                                        progress = 0f,
+                                    ),
                                 )
-                            if (downloaded == null) return@withContext null
+                                val downloaded =
+                                    downloadFileToCache(
+                                        label = spec.verName,
+                                        url = spec.remoteUrl,
+                                        currentIndex = index + 1,
+                                        total = pending.size,
+                                        title = title,
+                                    )
+                                if (downloaded == null) return@withContext null
 
-                            updateTransferState(
-                                TransferState(
-                                    title = title,
-                                    detail = getString(R.string.setup_wizard_downloading, spec.verName),
-                                    currentIndex = index + 1,
-                                    total = pending.size,
-                                    progress = 1f,
-                                ),
-                            )
-                            kotlinx.coroutines.delay(500)
+                                updateTransferState(
+                                    TransferState(
+                                        title = title,
+                                        detail = getString(R.string.setup_wizard_downloading, spec.verName),
+                                        currentIndex = index + 1,
+                                        total = pending.size,
+                                        progress = 1f,
+                                    ),
+                                )
+                                kotlinx.coroutines.delay(500)
 
-                            updateTransferState(
-                                TransferState(
-                                    title = title,
-                                    detail = getString(R.string.setup_wizard_installing_package, spec.verName),
-                                    currentIndex = index + 1,
-                                    total = pending.size,
-                                    progress = null,
-                                ),
-                            )
+                                updateTransferState(
+                                    TransferState(
+                                        title = title,
+                                        detail = getString(R.string.setup_wizard_installing_package, spec.verName),
+                                        currentIndex = index + 1,
+                                        total = pending.size,
+                                        progress = null,
+                                    ),
+                                )
 
-                            val installed = installDownloadedPackage(downloaded, spec.remoteUrl)
-                            downloaded.delete()
-                            if (installed == null) {
+                                val installed = installDownloadedPackage(downloaded, spec.remoteUrl)
+                                downloaded.delete()
+                                if (installed == null) {
+                                    updateWizardError(
+                                        lastInstallFailureMessage
+                                            ?: getString(R.string.setup_wizard_install_failed_reason, spec.verName),
+                                    )
+                                }
+                                installed
+                            } catch (e: Exception) {
                                 updateWizardError(
-                                    lastInstallFailureMessage
-                                        ?: getString(R.string.setup_wizard_install_failed_reason, spec.verName),
+                                    getString(
+                                        R.string.setup_wizard_install_failed_reason,
+                                        e.message ?: getString(R.string.common_ui_unknown_error),
+                                    ),
                                 )
+                                null
                             }
-                            installed
-                        } catch (e: Exception) {
-                            updateWizardError(
-                                getString(
-                                    R.string.setup_wizard_install_failed_reason,
-                                    e.message ?: getString(R.string.common_ui_unknown_error),
-                                ),
-                            )
-                            null
                         }
+                    if (profile != null) {
+                        if (spec.verName !in advancedInstalledSet) {
+                            advancedInstalledSet.add(spec.verName)
+                        }
+                    } else {
+                        break
                     }
-                if (profile != null) {
-                    if (spec.verName !in advancedInstalledSet) {
-                        advancedInstalledSet.add(spec.verName)
-                    }
-                } else {
-                    break
                 }
+                updateTransferState(null)
+                refreshAdvancedInstalledSet()
+                refreshWizardState()
+            } finally {
+                com.winlator.cmod.runtime.system.SessionKeepAliveService.stopDownload(
+                    applicationContext,
+                    keepAliveTag,
+                )
             }
-            updateTransferState(null)
-            refreshAdvancedInstalledSet()
-            refreshWizardState()
         }
     }
 
     private fun installAdvancedComponent(spec: RemotePackageSpec) {
         if (transferState.value != null) return
+        val keepAliveTag = "install_advanced_${spec.remoteUrl}"
+        com.winlator.cmod.runtime.system.SessionKeepAliveService.startDownload(this, keepAliveTag)
         lifecycleScope.launch {
             wizardError.value = null
             val title = spec.verName
@@ -1269,6 +1300,10 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
                 refreshAdvancedInstalledSet()
                 refreshWizardState()
             }
+            com.winlator.cmod.runtime.system.SessionKeepAliveService.stopDownload(
+                applicationContext,
+                keepAliveTag,
+            )
         }
     }
 
@@ -1960,10 +1995,10 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
                 modifier = mod,
                 title = stringResource(R.string.common_ui_notifications),
                 subtitle = stringResource(R.string.common_ui_optional),
-                completed = notifGranted.value,
+                completed = backgroundSessionEnabled.value,
                 buttonLabel =
                     when {
-                        notifGranted.value -> stringResource(R.string.setup_wizard_granted)
+                        backgroundSessionEnabled.value -> stringResource(R.string.setup_wizard_granted)
                         notifDenied.value -> stringResource(R.string.setup_wizard_denied)
                         else -> stringResource(R.string.setup_wizard_allow)
                     },
