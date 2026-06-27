@@ -35,9 +35,35 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
 
+import android.content.pm.ServiceInfo
+import android.os.Build
+import com.winlator.cmod.shared.android.NotificationHelper.Companion.ACTION_EXIT
+
 // Foreground service facade for Epic auth, library sync, downloads, and cloud saves.
 @AndroidEntryPoint
 class EpicService : Service() {
+    private lateinit var notificationHelper: NotificationHelper
+    var notificationID = 1
+
+    @Inject
+    lateinit var epicManager: EpicManager
+
+    @Inject
+    lateinit var epicDownloadManager: EpicDownloadManager
+
+    @Inject
+    lateinit var epicVerifyManager: EpicVerifyManager
+
+    @Inject
+    lateinit var epicUpdateManager: EpicUpdateManager
+
+    @Inject
+    lateinit var epicOverlayManager: EpicOverlayManager
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val activeDownloads = ConcurrentHashMap<Int, DownloadInfo>()
+
     companion object {
         private var instance: EpicService? = null
 
@@ -53,6 +79,8 @@ class EpicService : Service() {
 
         val isRunning: Boolean
             get() = instance != null
+
+        @Volatile private var appInForeground = true
 
         fun start(context: Context) {
             Timber.tag("EPIC").d("Starting service...")
@@ -96,7 +124,8 @@ class EpicService : Service() {
                     service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
                 }.onFailure { Timber.w(it, "Failed to remove EpicService foreground state during shutdown") }
                 runCatching {
-                    service.notificationHelper.cancel()
+                    if (service::notificationHelper.isInitialized)
+                        service.notificationHelper.cancel(service.notificationID)
                 }.onFailure { Timber.w(it, "Failed to cancel EpicService notification during shutdown") }
                 service.stopSelf()
             }
@@ -1126,27 +1155,6 @@ class EpicService : Service() {
         }
     }
 
-    private lateinit var notificationHelper: NotificationHelper
-
-    @Inject
-    lateinit var epicManager: EpicManager
-
-    @Inject
-    lateinit var epicDownloadManager: EpicDownloadManager
-
-    @Inject
-    lateinit var epicVerifyManager: EpicVerifyManager
-
-    @Inject
-    lateinit var epicUpdateManager: EpicUpdateManager
-
-    @Inject
-    lateinit var epicOverlayManager: EpicOverlayManager
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    private val activeDownloads = ConcurrentHashMap<Int, DownloadInfo>()
-
     // Original download parameters per appId so resume can restore DLC selection,
     // language, and install path instead of falling back to defaults.
     data class DownloadParams(
@@ -1418,7 +1426,7 @@ class EpicService : Service() {
 
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        notificationHelper.cancel()
+        notificationHelper.cancel(notificationID)
         instance = null
     }
 

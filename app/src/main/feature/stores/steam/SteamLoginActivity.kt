@@ -48,6 +48,7 @@ import com.winlator.cmod.feature.stores.steam.enums.LoginScreen
 import com.winlator.cmod.feature.stores.steam.ui.SteamLoginViewModel
 import com.winlator.cmod.feature.stores.steam.ui.components.QrCodeImage
 import com.winlator.cmod.feature.stores.steam.ui.data.UserLoginState
+import com.winlator.cmod.runtime.system.SessionKeepAliveService
 import com.winlator.cmod.shared.android.FixedFontScaleComponentActivity
 import com.winlator.cmod.shared.theme.WinNativeTheme
 import com.winlator.cmod.shared.ui.outlinedSwitchColors
@@ -68,7 +69,9 @@ class SteamLoginActivity : FixedFontScaleComponentActivity() {
         super.onCreate(savedInstanceState)
 
         try {
-            startForegroundService(android.content.Intent(this, com.winlator.cmod.feature.stores.steam.service.SteamService::class.java))
+//            startForegroundService(android.content.Intent(this, com.winlator.cmod.feature.stores.steam.service.SteamService::class.java))
+            startService(android.content.Intent(this, com.winlator.cmod.feature.stores.steam.service.SteamService::class.java))
+            SessionKeepAliveService.startComponent(this, SessionKeepAliveService.COMPONENT_STEAM, "Steam Login Service")
         } catch (e: Exception) {
             Timber.e(e, "Failed to start SteamService from SteamLoginActivity")
         }

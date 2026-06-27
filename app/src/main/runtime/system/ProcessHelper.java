@@ -235,12 +235,12 @@ public abstract class ProcessHelper {
       String normalized = (statData + " " + cmdlineData).toLowerCase();
 
       // Make the OS never OOM-kill the paused process if possible.
-      setOomScoreAdj(pid, OOM_SCORE_ADJ_PROTECT);
+//      setOomScoreAdj(pid, OOM_SCORE_ADJ_PROTECT);
 
-      if (isCoreProcess(normalized)) {
+      /*if (isCoreProcess(normalized)) {
         if (PRINT_DEBUG) Log.d(TAG, "Skipping SIGSTOP for core process: " + process + " (" + normalized + ")");
         continue;
-      }
+      }*/
 
       suspendProcess(pid);
     }
@@ -252,7 +252,7 @@ public abstract class ProcessHelper {
     for (String process : processes) {
       int pid = Integer.parseInt(process);
       resumeProcess(pid);
-      setOomScoreAdj(pid, OOM_SCORE_ADJ_DEFAULT);
+//      setOomScoreAdj(pid, OOM_SCORE_ADJ_DEFAULT);
     }
   }
 
@@ -561,7 +561,17 @@ public abstract class ProcessHelper {
 
   private static String readProcCmdline(File proc, String pid) {
     try (FileInputStream fr = new FileInputStream(proc + "/" + pid + "/cmdline")) {
-      byte[] bytes = fr.readAllBytes();
+      // readAllBytes() requires API level 33, otherwise, the code will crash
+      byte[] bytes;
+      if (android.os.Build.VERSION.SDK_INT >= 33) {
+        bytes = fr.readAllBytes();
+      }
+      else {
+        // Alternative for compatibility
+        bytes = new byte[(int) fr.getChannel().size()];
+        fr.read(bytes);
+      }
+
       return new String(bytes, StandardCharsets.UTF_8).replace('\0', ' ');
     } catch (IOException e) {
       return "";

@@ -34,9 +34,45 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
 
+import android.content.pm.ServiceInfo
+import android.os.Build
+import com.winlator.cmod.shared.android.NotificationHelper.Companion.ACTION_EXIT
+
 // Foreground service facade for GOG auth, library sync, downloads, and cloud saves.
 @AndroidEntryPoint
 class GOGService : Service() {
+
+    private lateinit var notificationHelper: NotificationHelper
+    var notificationID = 1
+
+    @Inject
+    lateinit var gogManager: GOGManager
+
+    @Inject
+    lateinit var gogDownloadManager: GOGDownloadManager
+
+    @Inject
+    lateinit var gogVerifyManager: GOGVerifyManager
+
+    @Inject
+    lateinit var gogUpdateManager: GOGUpdateManager
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private val activeDownloads = ConcurrentHashMap<String, DownloadInfo>()
+
+    // Download parameters per gameId so resume can restore container language and
+    // install path instead of falling back to defaults.
+    data class DownloadParams(
+        val dlcGameIds: List<Int>,
+        val containerLanguage: String,
+        val installPath: String,
+    )
+
+    private val downloadParams = ConcurrentHashMap<String, DownloadParams>()
+
+    private val onEndProcess: (AndroidEvent.EndProcess) -> Unit = { stop() }
+
     companion object {
         private const val ACTION_SYNC_LIBRARY = "com.winlator.cmod.GOG_SYNC_LIBRARY"
         private const val ACTION_MANUAL_SYNC = "com.winlator.cmod.GOG_MANUAL_SYNC"
@@ -93,7 +129,8 @@ class GOGService : Service() {
                     service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
                 }.onFailure { Timber.w(it, "Failed to remove GOGService foreground state during shutdown") }
                 runCatching {
-                    service.notificationHelper.cancel()
+                    if (service::notificationHelper.isInitialized)
+                        service.notificationHelper.cancel(service.notificationID)
                 }.onFailure { Timber.w(it, "Failed to cancel GOGService notification during shutdown") }
                 service.stopSelf()
             }
@@ -1440,36 +1477,6 @@ class GOGService : Service() {
             }
     }
 
-    private lateinit var notificationHelper: NotificationHelper
-
-    @Inject
-    lateinit var gogManager: GOGManager
-
-    @Inject
-    lateinit var gogDownloadManager: GOGDownloadManager
-
-    @Inject
-    lateinit var gogVerifyManager: GOGVerifyManager
-
-    @Inject
-    lateinit var gogUpdateManager: GOGUpdateManager
-
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-
-    private val activeDownloads = ConcurrentHashMap<String, DownloadInfo>()
-
-    // Download parameters per gameId so resume can restore container language and
-    // install path instead of falling back to defaults.
-    data class DownloadParams(
-        val dlcGameIds: List<Int>,
-        val containerLanguage: String,
-        val installPath: String,
-    )
-
-    private val downloadParams = ConcurrentHashMap<String, DownloadParams>()
-
-    private val onEndProcess: (AndroidEvent.EndProcess) -> Unit = { stop() }
-
     private val coordinatorDispatcher =
         object : DownloadCoordinator.Dispatcher {
             override fun startQueued(record: DownloadRecord) {
@@ -1664,7 +1671,7 @@ class GOGService : Service() {
 
         scope.cancel()
         stopForeground(STOP_FOREGROUND_REMOVE)
-        notificationHelper.cancel()
+        notificationHelper.cancel(notificationID)
         instance = null
     }
 

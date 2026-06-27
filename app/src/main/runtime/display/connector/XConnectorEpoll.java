@@ -130,6 +130,7 @@ public class XConnectorEpoll implements Runnable {
   }
 
   public void killConnection(Client client) {
+    if (!client.markKillingOnce()) return; // already being/been torn down by another thread
     client.connected = false;
     connectionHandler.handleConnectionShutdown(client);
     if (multithreadedClients) {

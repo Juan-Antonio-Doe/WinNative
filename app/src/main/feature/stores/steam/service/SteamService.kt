@@ -7,33 +7,41 @@ import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.room.withTransaction
+import com.auth0.android.jwt.JWT
 import com.winlator.cmod.BuildConfig
 import com.winlator.cmod.R
 import com.winlator.cmod.app.PluviaApp
 import com.winlator.cmod.app.db.PluviaDatabase
 import com.winlator.cmod.app.db.download.DownloadRecord
 import com.winlator.cmod.app.service.DownloadService
-import com.winlator.cmod.app.service.NetworkMonitor
 import com.winlator.cmod.app.service.download.DownloadCoordinator
 import com.winlator.cmod.feature.shortcuts.LibraryShortcutUtils
+import com.winlator.cmod.feature.steamcloudsync.SteamAutoCloud
+import com.winlator.cmod.feature.stores.common.StoreArtworkCache
+import com.winlator.cmod.feature.stores.common.StoreAuthStatus
+import com.winlator.cmod.feature.stores.common.StoreInstallPathSafety
 import com.winlator.cmod.feature.stores.steam.data.AppInfo
+import com.winlator.cmod.feature.stores.steam.data.AsyncJobFailedException
 import com.winlator.cmod.feature.stores.steam.data.CachedLicense
 import com.winlator.cmod.feature.stores.steam.data.DepotInfo
 import com.winlator.cmod.feature.stores.steam.data.DownloadFailedException
 import com.winlator.cmod.feature.stores.steam.data.DownloadInfo
-import com.winlator.cmod.feature.stores.steam.data.WnDownloadTransientException
 import com.winlator.cmod.feature.stores.steam.data.DownloadingAppInfo
 import com.winlator.cmod.feature.stores.steam.data.EncryptedAppTicket
+import com.winlator.cmod.feature.stores.steam.data.GamePlayedInfo
 import com.winlator.cmod.feature.stores.steam.data.GameProcessInfo
 import com.winlator.cmod.feature.stores.steam.data.LaunchInfo
 import com.winlator.cmod.feature.stores.steam.data.ManifestInfo
 import com.winlator.cmod.feature.stores.steam.data.OwnedGames
+import com.winlator.cmod.feature.stores.steam.data.PICSRequest
 import com.winlator.cmod.feature.stores.steam.data.PostSyncInfo
 import com.winlator.cmod.feature.stores.steam.data.SteamApp
 import com.winlator.cmod.feature.stores.steam.data.SteamControllerConfigDetail
 import com.winlator.cmod.feature.stores.steam.data.SteamFriend
+import com.winlator.cmod.feature.stores.steam.data.SteamID
 import com.winlator.cmod.feature.stores.steam.data.SteamLicense
 import com.winlator.cmod.feature.stores.steam.data.UserFileInfo
+import com.winlator.cmod.feature.stores.steam.data.WnDownloadTransientException
 import com.winlator.cmod.feature.stores.steam.db.dao.AppInfoDao
 import com.winlator.cmod.feature.stores.steam.db.dao.CachedLicenseDao
 import com.winlator.cmod.feature.stores.steam.db.dao.ChangeNumbersDao
@@ -42,41 +50,38 @@ import com.winlator.cmod.feature.stores.steam.db.dao.EncryptedAppTicketDao
 import com.winlator.cmod.feature.stores.steam.db.dao.FileChangeListsDao
 import com.winlator.cmod.feature.stores.steam.db.dao.SteamAppDao
 import com.winlator.cmod.feature.stores.steam.db.dao.SteamLicenseDao
-import com.winlator.cmod.feature.stores.steam.enums.ControllerSupport
 import com.winlator.cmod.feature.stores.steam.enums.DownloadPhase
-import com.winlator.cmod.feature.stores.steam.enums.GameSource
-import com.winlator.cmod.feature.stores.steam.enums.Language
+import com.winlator.cmod.feature.stores.steam.enums.ELicenseFlags
+import com.winlator.cmod.feature.stores.steam.enums.ELicenseType
+import com.winlator.cmod.feature.stores.steam.enums.EOSType
+import com.winlator.cmod.feature.stores.steam.enums.EPaymentMethod
+import com.winlator.cmod.feature.stores.steam.enums.EPersonaState
+import com.winlator.cmod.feature.stores.steam.enums.EResult
 import com.winlator.cmod.feature.stores.steam.enums.LoginResult
 import com.winlator.cmod.feature.stores.steam.enums.Marker
 import com.winlator.cmod.feature.stores.steam.enums.OS
 import com.winlator.cmod.feature.stores.steam.enums.OSArch
 import com.winlator.cmod.feature.stores.steam.enums.SaveLocation
 import com.winlator.cmod.feature.stores.steam.enums.SyncResult
-import com.auth0.android.jwt.JWT
-import com.winlator.cmod.feature.stores.common.StoreAuthStatus
-import com.winlator.cmod.feature.stores.common.StoreArtworkCache
-import com.winlator.cmod.feature.stores.common.StoreInstallPathSafety
 import com.winlator.cmod.feature.stores.steam.events.AndroidEvent
 import com.winlator.cmod.feature.stores.steam.events.SteamEvent
 import com.winlator.cmod.feature.stores.steam.inventorygen.InventoryItemsGenerator
-import com.winlator.cmod.feature.stores.steam.wnsteam.CaBundleExtractor
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnAuthCallback
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnDownloadListener
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnAuthResult
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnAuthenticator
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnLibraryStore
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnQrCallback
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnSteamSession
-import com.winlator.cmod.feature.stores.steam.wnsteam.WnSteamStateObserver
-import com.winlator.cmod.feature.stores.steam.workshop.WorkshopModsGenerator
-import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
-import kotlin.coroutines.resume
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.BACKGROUND_IDLE_GRACE_MS
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.RECONNECT_BACKOFF_CAP_MS
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.generateAchievements
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.installWnLogonObserver
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.isConnectedFlow
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.isLoggedIn
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.isLoggedInFlow
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.onAppBackgrounded
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.onAppForegrounded
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.withWnSession
+import com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.wnSession
 import com.winlator.cmod.feature.stores.steam.statsgen.StatType
 import com.winlator.cmod.feature.stores.steam.statsgen.StatsAchievementsGenerator
 import com.winlator.cmod.feature.stores.steam.statsgen.VdfParser
 import com.winlator.cmod.feature.stores.steam.utils.ContainerUtils
+import com.winlator.cmod.feature.stores.steam.utils.KeyValue
 import com.winlator.cmod.feature.stores.steam.utils.LicenseSerializer
 import com.winlator.cmod.feature.stores.steam.utils.MarkerUtils
 import com.winlator.cmod.feature.stores.steam.utils.Net
@@ -84,30 +89,25 @@ import com.winlator.cmod.feature.stores.steam.utils.PrefManager
 import com.winlator.cmod.feature.stores.steam.utils.SteamUtils
 import com.winlator.cmod.feature.stores.steam.utils.WnKeyValue
 import com.winlator.cmod.feature.stores.steam.utils.generateSteamApp
-import com.winlator.cmod.feature.steamcloudsync.SteamAutoCloud
-import com.winlator.cmod.feature.sync.google.CloudSyncManager
+import com.winlator.cmod.feature.stores.steam.wnsteam.CaBundleExtractor
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnAuthCallback
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnAuthResult
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnAuthenticator
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnDownloadListener
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnLibraryStore
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnQrCallback
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnSteamSession
+import com.winlator.cmod.feature.stores.steam.wnsteam.WnSteamStateObserver
+import com.winlator.cmod.feature.stores.steam.workshop.WorkshopModsGenerator
 import com.winlator.cmod.runtime.container.Container
 import com.winlator.cmod.runtime.container.ContainerManager
 import com.winlator.cmod.runtime.display.environment.ImageFs
-import com.winlator.cmod.runtime.system.GPUInformation
+import com.winlator.cmod.runtime.system.LogManager
 import com.winlator.cmod.runtime.system.SessionKeepAliveService
 import com.winlator.cmod.shared.android.AppTerminationHelper
-import com.winlator.cmod.shared.ui.toast.WinToast
 import com.winlator.cmod.shared.android.NotificationHelper
-import com.winlator.cmod.shared.io.StorageUtils
+import com.winlator.cmod.shared.ui.toast.WinToast
 import dagger.hilt.android.AndroidEntryPoint
-import com.winlator.cmod.feature.stores.steam.enums.EDepotFileFlag
-import com.winlator.cmod.feature.stores.steam.enums.ELicenseFlags
-import com.winlator.cmod.feature.stores.steam.enums.ELicenseType
-import com.winlator.cmod.feature.stores.steam.enums.EPaymentMethod
-import com.winlator.cmod.feature.stores.steam.enums.EOSType
-import com.winlator.cmod.feature.stores.steam.enums.EPersonaState
-import com.winlator.cmod.feature.stores.steam.enums.EResult
-import com.winlator.cmod.feature.stores.steam.data.AsyncJobFailedException
-import com.winlator.cmod.feature.stores.steam.data.GamePlayedInfo
-import com.winlator.cmod.feature.stores.steam.data.PICSRequest
-import com.winlator.cmod.feature.stores.steam.data.SteamID
-import com.winlator.cmod.feature.stores.steam.utils.KeyValue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -120,21 +120,20 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import okhttp3.FormBody
 import okhttp3.Request
 import org.json.JSONArray
@@ -144,18 +143,17 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
-import java.lang.NullPointerException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.Collections
 import java.util.Date
 import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
+import kotlin.coroutines.resume
 import kotlin.io.path.pathString
 import kotlin.time.Duration.Companion.seconds
 
@@ -196,7 +194,9 @@ class SteamService : Service() {
     @Inject
     lateinit var downloadingAppInfoDao: DownloadingAppInfoDao
 
-    private lateinit var notificationHelper: NotificationHelper
+    /*private lateinit var notificationHelper: NotificationHelper
+    var notificationID = 1
+    var preferences: SharedPreferences? = null*/
 
     private var _unifiedFriends: SteamUnifiedFriends? = null
 
@@ -6590,7 +6590,7 @@ class SteamService : Service() {
                     Timber.e("WnSteam auth failed: %s", result.errorMessage)
                     com.winlator.cmod.feature.stores.steam.wnsteam.WnLibSteamClient
                         .reportLogonFailure(
-                            eresult = result.errorCode.takeIf { it != 0 } ?: 2 /* Fail */,
+                            eresult = result.errorCode.takeIf { it != 0 } ?: 2, /* Fail */
                             stillRetrying = false,
                         )
                     recordLogonFailure(result.errorCode.takeIf { it != 0 } ?: 2)
@@ -7071,8 +7071,12 @@ class SteamService : Service() {
 
         fun start(context: Context) {
             try {
+                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
                 val intent = Intent(context, SteamService::class.java)
-                context.startForegroundService(intent)
+
+                // Just start as a normal service. KeepAliveService should protect this.
+                context.startService(intent)
+
             } catch (e: Exception) {
                 Timber.e(e, "Failed to start SteamService")
             }
@@ -7097,11 +7101,13 @@ class SteamService : Service() {
                 if (!isStopping) {
                     isStopping = true
                     runCatching {
-                        steamInstance.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                        SessionKeepAliveService.stopComponent(steamInstance, SessionKeepAliveService.COMPONENT_STEAM)
                     }.onFailure { Timber.w(it, "Failed to remove SteamService foreground state during shutdown") }
-                    runCatching {
-                        steamInstance.notificationHelper.cancel()
-                    }.onFailure { Timber.w(it, "Failed to cancel SteamService notification during shutdown") }
+                    /*runCatching {
+                        if (steamInstance::notificationHelper.isInitialized) {
+                            steamInstance.notificationHelper.cancel(steamInstance.notificationID)
+                        }
+                    }.onFailure { Timber.w(it, "Failed to cancel SteamService notification during shutdown") }*/
                     steamInstance.stopSelf()
                 }
                 steamInstance.scope.launch {
@@ -7120,8 +7126,11 @@ class SteamService : Service() {
             PrefManager.clearAuthTokens()
             instance?.let { svc ->
                 svc.scope.launch(Dispatchers.IO) {
-                    runCatching { svc.encryptedAppTicketDao.deleteAll() }
-                        .onFailure { Timber.w(it, "Failed to clear encrypted-app-ticket cache on logout") }
+                    runCatching {
+                        // Unregister Steam immediately on logout
+                        SessionKeepAliveService.stopComponent(svc, SessionKeepAliveService.COMPONENT_STEAM)
+                        svc.encryptedAppTicketDao.deleteAll()
+                    }.onFailure { Timber.w(it, "Failed to clear encrypted-app-ticket cache on logout") }
                 }
             }
             runCatching {
@@ -7667,10 +7676,6 @@ class SteamService : Service() {
         super.onCreate()
         instance = this
 
-        notificationHelper = NotificationHelper(applicationContext)
-        val notification = notificationHelper.createForegroundNotification("Steam Service is running")
-        startForeground(1, notification)
-
         com.winlator.cmod.feature.stores.steam.wnsteam.WnLibSteamClient
             .seedFromPrefManager(applicationContext)
 
@@ -7778,6 +7783,11 @@ class SteamService : Service() {
             }
         }
 
+        // Register Steam component in the master foreground service
+        if (isRunning && !isStopping) {
+            SessionKeepAliveService.startComponent(this, SessionKeepAliveService.COMPONENT_STEAM, "Connected")
+        }
+
         return START_STICKY
     }
 
@@ -7795,8 +7805,11 @@ class SteamService : Service() {
             downloadInfo.persistProgressSnapshot(force = true)
         }
 
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        notificationHelper.cancel()
+        /*stopForeground(STOP_FOREGROUND_REMOVE)
+        notificationHelper.cancel(notificationID)*/
+
+        // Safety unregister in case of unexpected destruction
+        SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM)
 
         if (!isStopping) {
             scope.launch { stop() }
@@ -7913,7 +7926,10 @@ class SteamService : Service() {
     private fun connectionCriticalWork(): String? =
         when {
             DownloadCoordinator.hasActiveDownload() -> "a download is active"
-            PluviaApp.isGameSessionActive() -> "a game session is running"
+//            PluviaApp.isGameSessionActive() -> "a game session is running"
+            PluviaApp.isGameSessionActive().also { active ->
+                LogManager.log("SteamService", this) { "Foreground check: isGameSessionActive = $active" }
+            } -> "a game session is running"
             syncInProgressApps.values.any { it.get() } -> "a cloud save sync is in progress"
             else -> null
         }
@@ -8203,7 +8219,7 @@ class SteamService : Service() {
             retryAttempt++
             val backoffMs = reconnectBackoffMs(retryAttempt)
             Timber.w("Reconnect scheduled in ${backoffMs}ms (retry $retryAttempt/$MAX_RETRY_ATTEMPTS)")
-            notificationHelper.notify("Retrying")
+//            notificationHelper.notify(notificationID, "Retrying")
             PluviaApp.events.emit(SteamEvent.RemotelyDisconnected)
             reconnectJob?.cancel()
             reconnectJob =
@@ -8325,7 +8341,9 @@ class SteamService : Service() {
                 .setPersonaState(effectiveState)
         }
 
-        notificationHelper.notify("Connected")
+//        notificationHelper.notify(notificationID,"Connected")
+        // Update state in master service
+        SessionKeepAliveService.startComponent(this, SessionKeepAliveService.COMPONENT_STEAM, "Connected")
         _loginResult = LoginResult.Success
         PluviaApp.events.emit(SteamEvent.LogonEnded(PrefManager.username, LoginResult.Success))
 
@@ -8976,4 +8994,14 @@ class SteamService : Service() {
         val ticket = getEncryptedAppTicket(appId) ?: return null
         return Base64.encodeToString(ticket, Base64.NO_WRAP)
     }
+
+    override fun onTimeout(startId: Int, fstype: Int) {
+        super.onTimeout(startId, fstype)
+        Timber.w("SteamService reached 6-hour limit for dataSync foreground service. Stopping gracefully.")
+
+        // Unregister before stopping
+        SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM)
+        Companion.stop()
+    }
+
 }
