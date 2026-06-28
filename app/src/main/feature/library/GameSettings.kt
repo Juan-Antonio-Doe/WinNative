@@ -102,14 +102,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.scale
 import com.winlator.cmod.R
+import com.winlator.cmod.runtime.wine.WineThemeManager
 import com.winlator.cmod.shared.ui.outlinedSwitchColors
 import com.winlator.cmod.shared.ui.widget.EnvVarsView
 import com.winlator.cmod.shared.ui.widget.chasingBorder
 import kotlin.math.roundToInt
 
-private val BgDeep = Color(0xFF18181D)
-private val SidebarBg = Color(0xFF18181D)
-private val ContentBg = Color(0xFF18181D)
+private val BgDeep = Color(0xFF11111C)
+private val SidebarBg = Color(0xFF11111C)
+private val ContentBg = Color(0xFF11111C)
 private val CardSurface = Color(0xFF1C1C2A)
 private val CardBorder = Color(0xFF2A2A3A)
 private val InputSurface = Color(0xFF171722)
@@ -347,6 +348,10 @@ class GameSettingsStateHolder {
     val selectedNumControllers = mutableIntStateOf(0)
     val disableXInput = mutableStateOf(false)
     val simTouchScreen = mutableStateOf(false)
+    val screenTouchMode = mutableIntStateOf(0)
+    val gestureProfileEntries = mutableStateOf<List<String>>(emptyList())
+    val gestureProfileIds = mutableStateOf<List<Int>>(emptyList())
+    val selectedGestureProfile = mutableIntStateOf(0)
     val sdl2Compatibility = mutableStateOf(false)
     val enableXInput = mutableStateOf(false)
     val enableDInput = mutableStateOf(false)
@@ -2078,11 +2083,10 @@ private fun WineSection(
                     onSelected = { state.selectedDesktopBackgroundType.intValue = it }
                 )
 
-                val typeEntries = state.desktopBackgroundTypeEntries.value
-                val selectedType = typeEntries.getOrNull(state.selectedDesktopBackgroundType.intValue)
-                    ?.lowercase() ?: ""
-                when (selectedType) {
-                    "color" -> {
+                val bgType = WineThemeManager.BackgroundType.values()
+                    .getOrNull(state.selectedDesktopBackgroundType.intValue)
+                when (bgType) {
+                    WineThemeManager.BackgroundType.COLOR -> {
                         Spacer(Modifier.height(SettingItemGap))
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -2110,7 +2114,7 @@ private fun WineSection(
                             )
                         }
                     }
-                    "image" -> {
+                    WineThemeManager.BackgroundType.IMAGE -> {
                         Spacer(Modifier.height(SettingItemGap))
                         Row(
                             modifier = Modifier
@@ -2142,6 +2146,7 @@ private fun WineSection(
                             }
                         }
                     }
+                    else -> {}
                 }
             }
         }
@@ -3011,11 +3016,51 @@ private fun InputSection(state: GameSettingsStateHolder) {
 
             Spacer(Modifier.height(4.dp))
 
+            // Touch input mode (Trackpad / Touchscreen / Map to Right Stick)
+            val gesturesOff = state.selectedGestureProfile.intValue == 0
+            val onSelectMode: (Int) -> Unit = { mode ->
+                state.screenTouchMode.intValue = mode
+                state.simTouchScreen.value = (mode == 1)
+                state.selectedGestureProfile.intValue = 0
+            }
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) {
+                    SettingCheckbox(
+                        label = stringResource(R.string.session_drawer_touch_trackpad),
+                        checked = state.screenTouchMode.intValue == 0 && gesturesOff,
+                        onCheckedChange = { if (it) onSelectMode(0) }
+                    )
+                }
+                Box(Modifier.weight(1f)) {
+                    SettingCheckbox(
+                        label = stringResource(R.string.session_drawer_touch_touchscreen),
+                        checked = state.screenTouchMode.intValue == 1 && gesturesOff,
+                        onCheckedChange = { onSelectMode(if (it) 1 else 0) }
+                    )
+                }
+            }
+            Spacer(Modifier.height(4.dp))
             SettingCheckbox(
-                label = stringResource(R.string.session_xserver_simulate_touch_screen),
-                checked = state.simTouchScreen.value,
-                onCheckedChange = { state.simTouchScreen.value = it }
+                label = stringResource(R.string.session_drawer_touch_map_right_stick),
+                checked = state.screenTouchMode.intValue == 2 && gesturesOff,
+                onCheckedChange = { onSelectMode(if (it) 2 else 0) }
             )
+
+            if (state.gestureProfileEntries.value.isNotEmpty()) {
+                Spacer(Modifier.height(SettingItemGap))
+                SettingDropdown(
+                    label = stringResource(R.string.session_gesture_profile_section),
+                    entries = state.gestureProfileEntries.value,
+                    selectedIndex = state.selectedGestureProfile.intValue,
+                    onSelected = {
+                        state.selectedGestureProfile.intValue = it
+                        if (it != 0) {
+                            state.screenTouchMode.intValue = 0
+                            state.simTouchScreen.value = false
+                        }
+                    }
+                )
+            }
         }
     }
 

@@ -9,13 +9,23 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.collectAsState
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Monitor
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -32,15 +42,16 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
+import com.winlator.cmod.R
 import com.winlator.cmod.shared.theme.WinNativeTheme
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -54,7 +65,7 @@ const val XSERVER_DRAWER_OPEN_TRIGGER_DP = 32
 // Open only on a clearly rightward swipe: dx must exceed this * |dy| (~27deg of horizontal).
 const val XSERVER_DRAWER_OPEN_HORIZONTAL_RATIO = 2f
 
-private val DrawerWidth = 312.dp
+private val DrawerWidth = 290.dp
 private val DrawerStartPadding = 6.dp
 private val DrawerVerticalPadding = 6.dp
 private const val DrawerSettleAnimationMs = 200
@@ -105,15 +116,6 @@ private fun XServerDisplayHost(
 ) {
     val animationScope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val context = LocalContext.current
-    // systemBars insets are zeroed on this view, so read the real status-bar height.
-    val statusBarHeight =
-        remember(context, density) {
-            val res = context.resources
-            val id = res.getIdentifier("status_bar_height", "dimen", "android")
-            val px = if (id > 0) res.getDimensionPixelSize(id) else 0
-            with(density) { px.toDp() }.coerceIn(24.dp, 56.dp)
-        }
     val viewConfiguration = LocalViewConfiguration.current
     val closedFallbackPx = with(density) { -(DrawerWidth + DrawerStartPadding).toPx() }
     var drawerOffsetPx by remember { mutableFloatStateOf(closedFallbackPx) }
@@ -168,6 +170,11 @@ private fun XServerDisplayHost(
 
     LaunchedEffect(dialogVisible) {
         callbacks.onDialogVisibilityChanged(dialogVisible)
+    }
+
+    // On swap-back, re-measure the hosted display frame so the reparented surface reclaims full size.
+    LaunchedEffect(stateHolder.phoneRelayoutTick) {
+        if (stateHolder.phoneRelayoutTick > 0) displayFrame.requestLayout()
     }
 
     WinNativeTheme {
@@ -277,7 +284,7 @@ private fun XServerDisplayHost(
                         }
                     },
         ) {
-            val drawerTopInset = statusBarHeight + 2.dp
+            val drawerTopInset = DrawerVerticalPadding
             val originalHeight = maxHeight - DrawerVerticalPadding * 2
             val drawerHeight = maxHeight - drawerTopInset - DrawerVerticalPadding
             val evenScale =
@@ -297,6 +304,35 @@ private fun XServerDisplayHost(
                             .zIndex(0f),
                     update = {},
                 )
+            }
+
+            // Performance HUD: half the screen (left in landscape, top in portrait), consuming its own
+            // touches so the rest stays a trackpad. Rendered in the host (not a nested ComposeView).
+            val perfHudVisible by PerformanceHudState.visible.collectAsState()
+            if (perfHudVisible) {
+                val landscape =
+                    LocalConfiguration.current.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                Box(
+                    modifier =
+                        Modifier
+                            .zIndex(1f)
+                            .then(
+                                if (landscape) {
+                                    Modifier.fillMaxHeight().fillMaxWidth(0.5f).align(Alignment.CenterStart)
+                                } else {
+                                    Modifier.fillMaxWidth().fillMaxHeight(0.5f).align(Alignment.TopCenter)
+                                },
+                            )
+                            .pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        awaitPointerEvent().changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                ) {
+                    PerformanceHudOverlay()
+                }
             }
 
             ModalDrawerSheet(

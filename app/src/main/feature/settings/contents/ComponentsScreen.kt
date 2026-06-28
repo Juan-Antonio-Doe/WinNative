@@ -80,7 +80,7 @@ import com.winlator.cmod.runtime.content.ContentProfile
 import com.winlator.cmod.shared.ui.dialog.PopupDialog
 
 // Palette (unified with Drivers / Stores / Other / Debug)
-private val BgDark = Color(0xFF18181D)
+private val BgDark = Color(0xFF11111C)
 private val CardDark = Color(0xFF1C1C2A)
 private val CardDarker = Color(0xFF15151E)
 private val CardBorder = Color(0xFF2A2A3A)
@@ -462,6 +462,7 @@ private fun descriptionResFor(type: ContentProfile.ContentType): Int =
         ContentProfile.ContentType.CONTENT_TYPE_BOX64 -> R.string.settings_content_desc_box64
         ContentProfile.ContentType.CONTENT_TYPE_WOWBOX64 -> R.string.settings_content_desc_wowbox64
         ContentProfile.ContentType.CONTENT_TYPE_FEXCORE -> R.string.settings_content_desc_fexcore
+        ContentProfile.ContentType.CONTENT_TYPE_D7VK -> R.string.settings_content_desc_d7vk
     }
 
 @Composable
@@ -603,6 +604,7 @@ private fun ComponentItemCard(
                         label = stringResource(R.string.common_ui_download),
                         icon = Icons.Outlined.Download,
                         tint = Accent,
+                        compact = true,
                         onClick = onDownload,
                     )
                 } else {
@@ -632,6 +634,8 @@ private fun IconTapButton(
             Modifier
                 .size(30.dp)
                 .clip(RoundedCornerShape(8.dp))
+                .background(tint.copy(alpha = 0.14f))
+                .border(1.dp, tint.copy(alpha = 0.30f), RoundedCornerShape(8.dp))
                 .noRippleClickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -830,6 +834,7 @@ private fun iconFor(type: ContentProfile.ContentType): ImageVector =
 
         ContentProfile.ContentType.CONTENT_TYPE_DXVK,
         ContentProfile.ContentType.CONTENT_TYPE_VKD3D,
+        ContentProfile.ContentType.CONTENT_TYPE_D7VK,
         -> Icons.Outlined.DeveloperBoard
 
         ContentProfile.ContentType.CONTENT_TYPE_BOX64,

@@ -63,6 +63,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.ExitToApp
 import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Add
@@ -72,6 +73,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.FiberManualRecord
 import androidx.compose.material.icons.outlined.Fullscreen
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Monitor
@@ -84,11 +86,14 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.TouchApp
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.ZoomIn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.LocalRippleConfiguration
@@ -124,6 +129,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.boundsInParent
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -190,6 +196,7 @@ private val DisabledCardBorder = Color(0xFF202033).copy(alpha = 0.58f)
 private val ActiveCardBorder = DrawerActiveAccent
 private val BottomDividerColor = WinNativeOutline
 private val GlassExitTint = Color(0xFFE07B6B)
+private val RecordRed = Color(0xFFE53935)
 
 // Pane content scales down on short displays.
 private val LocalPaneScale = staticCompositionLocalOf { 1f }
@@ -210,7 +217,7 @@ private enum class HUDMetricEditor(
     BACKGROUND_ALPHA(minPercent = 10, maxPercent = 100),
 }
 
-internal enum class DrawerPane { INPUT_CONTROLS, HUD, GYROSCOPE, SCREEN_EFFECTS, TASK_MANAGER, LOGS }
+internal enum class DrawerPane { INPUT_CONTROLS, HUD, GYROSCOPE, SCREEN_EFFECTS, OUTPUT, TASK_MANAGER, LOGS, TOUCH }
 
 internal const val LogsPaneMaxLines = 2000
 
@@ -273,6 +280,13 @@ private val RAIL_PANES =
             itemId = R.id.main_menu_screen_effects,
             labelRes = R.string.session_drawer_rail_label_effects,
         ),
+        // Shown only when the host adds a main_menu_output item to state.items.
+        RailPaneSpec(
+            pane = DrawerPane.OUTPUT,
+            itemId = R.id.main_menu_output,
+            labelRes = R.string.session_drawer_rail_label_output,
+            iconOverride = Icons.Outlined.Monitor,
+        ),
     )
 
 private val RAIL_PANE_ITEM_IDS = RAIL_PANES.map { it.itemId }.toSet()
@@ -280,8 +294,8 @@ private val PINNED_BOTTOM_ITEM_IDS = setOf(R.id.main_menu_pause, R.id.main_menu_
 
 private val TopRailTileMinWidth = 60.dp
 private val TopRailTileHorizontalPadding = 10.dp
-private val TopRailTileTopPadding = 6.dp
-private val TopRailTileBottomPadding = 4.dp
+private val TopRailTileTopPadding = 10.dp
+private val TopRailTileBottomPadding = 7.dp
 private val TopRailTileSpacing = 6.dp
 
 private const val ActionCardColumns = 3
@@ -298,6 +312,16 @@ data class XServerDrawerItem(
     val icon: ImageVector,
     val active: Boolean = false,
     val enabled: Boolean = true,
+)
+
+/** Device-filtered options + persisted selections for the Record popup. Quality: 0=Perf,1=Balance,2=Quality. */
+data class RecordUiConfig(
+    val fpsOptions: List<Int> = emptyList(),
+    val resolutionLabels: List<String> = emptyList(),
+    val fpsIndex: Int = 0,
+    val resolutionIndex: Int = 0,
+    val quality: Int = 2,
+    val recordUI: Boolean = false,
 )
 
 data class XServerDrawerState(
@@ -332,6 +356,20 @@ data class XServerDrawerState(
     val vividEnabled: Boolean = false,
     val vividStrength: Int = 100,
     val colorProfile: Int = 0,
+    val brightness: Int = 0,
+    val contrast: Int = 0,
+    val gammaPercent: Int = 100,
+    val scaleFilter: Int = 0,
+    val saturation: Int = 100,
+    val temperature: Int = 0,
+    val tint: Int = 0,
+    val sharpenEnabled: Boolean = false,
+    val sharpenStrength: Int = 50,
+    val scanlinesEnabled: Boolean = false,
+    val scanlinesIntensity: Int = 50,
+    val pixelateEnabled: Boolean = false,
+    val pixelateBlock: Int = 6,
+    val colorBlind: Int = 0,
     val inputControlsProfileNames: List<String> = emptyList(),
     val inputControlsSelectedProfileIndex: Int = 0,
     val inputControlsStyleNames: List<String> = emptyList(),
@@ -345,6 +383,45 @@ data class XServerDrawerState(
     val inputControlsGamepadVibration: Boolean = true,
     val inputControlsGcmRumbleMode: String = "disabled",
     val cursorSpeed: Float = 1.0f,
+    // External display / cast "Output" pane.
+    val outputSwapActive: Boolean = false,
+    val outputDisplayName: String = "",
+    val outputResolutionLabels: List<String> = emptyList(),
+    val outputSelectedResolutionIndex: Int = 0,
+    val outputRefreshLabels: List<String> = emptyList(),
+    val outputSelectedRefreshIndex: Int = 0,
+    val outputAspectMode: Int = 0,
+    val outputGameModeSupported: Boolean = false,
+    val outputGameModeEnabled: Boolean = false,
+    // Sink ignored real mode switches — phone is scaling; resolution becomes a render-size control.
+    val outputPanelScaling: Boolean = false,
+    val outputPanelNative: String = "",
+    // Display connected but game still on the phone — show the "Send to display" button.
+    val outputDisplayAvailable: Boolean = false,
+    // Viture XR glasses controls (USB), present only when Viture glasses are connected.
+    val outputVitureConnected: Boolean = false,
+    val outputVitureName: String = "",
+    val outputVitureSupportsBrightness: Boolean = false,
+    val outputVitureBrightness: Int = 0,
+    val outputVitureBrightnessMax: Int = 8,
+    val outputVitureSupportsFilm: Boolean = false,
+    val outputVitureFilmStepped: Boolean = false,
+    val outputVitureFilm: Int = 0,
+    val outputVitureSupports3D: Boolean = false,
+    val outputViture3D: Boolean = false,
+    val outputVitureSupportsVolume: Boolean = false,
+    val outputVitureVolume: Int = 0,
+    val outputVitureVolumeMax: Int = 8,
+    // Record settings popup config (device-aware options + persisted selections).
+    val recordConfig: RecordUiConfig = RecordUiConfig(),
+    val mouseEnabled: Boolean = true,
+    val relativeMouseEnabled: Boolean = false,
+    val screenTouchMode: Int = 0,
+    val rtsGesturesEnabled: Boolean = false,
+    val gestureProfileNames: List<String> = emptyList(),
+    val gestureSelectedProfileIndex: Int = 0,
+    val rightStickSensitivity: Float = 1.0f,
+    val screenTouchRsSensitivity: Float = 1.25f,
 )
 
 class XServerDrawerStateHolder(
@@ -366,6 +443,14 @@ class XServerDrawerStateHolder(
     private var drawerOpen by mutableStateOf(false)
     internal var openPane by mutableStateOf<DrawerPane?>(null)
     private var paneVisibilityListener: ((Boolean) -> Unit)? = null
+
+    // Bumped on swap-back so the host re-requests a layout pass on the Compose-hosted display frame.
+    var phoneRelayoutTick by mutableStateOf(0)
+        private set
+
+    fun requestPhoneRelayout() {
+        phoneRelayoutTick++
+    }
 
     val isDrawerOpen: Boolean
         get() = drawerOpen
@@ -512,6 +597,28 @@ interface XServerDrawerActionListener {
 
     fun onScreenEffectsCardExpandedChanged(expanded: Boolean)
 
+    fun onOutputResolutionSelected(index: Int)
+
+    fun onOutputRefreshRateSelected(index: Int)
+
+    fun onOutputAspectModeSelected(mode: Int)
+
+    fun onOutputGameModeToggled(enabled: Boolean)
+
+    fun onOutputVitureBrightness(level: Int)
+
+    fun onOutputVitureFilm(level: Int)
+
+    fun onOutputViture3D(enabled: Boolean)
+
+    fun onOutputVitureVolume(level: Int)
+
+    fun onOutputReturnToPhone()
+
+    fun onOutputSwapToDisplay()
+
+    fun onOutputCastClick()
+
     fun onSGSREnabledChanged(enabled: Boolean)
 
     fun onSGSRSharpnessChanged(sharpness: Int)
@@ -521,6 +628,36 @@ interface XServerDrawerActionListener {
     fun onVividStrengthChanged(strength: Int)
 
     fun onColorProfileSelected(profile: Int)
+
+    fun onBrightnessChanged(value: Int)
+
+    fun onContrastChanged(value: Int)
+
+    fun onGammaChanged(value: Int)
+
+    fun onScaleFilterSelected(mode: Int)
+
+    fun onSaturationChanged(value: Int)
+
+    fun onTemperatureChanged(value: Int)
+
+    fun onTintChanged(value: Int)
+
+    fun onSharpenEnabledChanged(enabled: Boolean)
+
+    fun onSharpenStrengthChanged(value: Int)
+
+    fun onScanlinesEnabledChanged(enabled: Boolean)
+
+    fun onScanlinesIntensityChanged(value: Int)
+
+    fun onPixelateEnabledChanged(enabled: Boolean)
+
+    fun onPixelateBlockChanged(value: Int)
+
+    fun onColorBlindSelected(mode: Int)
+
+    fun onResetEffects()
 
     fun onInputControlsProfileSelected(index: Int)
 
@@ -544,6 +681,16 @@ interface XServerDrawerActionListener {
 
     fun onInputControlsEditClick()
 
+    fun onScreenTouchModeChanged(mode: Int)
+
+    fun onRtsGesturesToggled(enabled: Boolean)
+
+    fun onGestureProfileSelected(index: Int)
+
+    fun onRtsGesturesEditClick()
+
+    fun onRightStickSensitivityChanged(sensitivity: Float)
+
     fun onTaskManagerVisibilityChanged(visible: Boolean)
 
     fun onTaskManagerCpuExpandedChanged(expanded: Boolean)
@@ -563,6 +710,9 @@ interface XServerDrawerActionListener {
     fun onLogsPaneVisibilityChanged(visible: Boolean)
 
     fun onLogsShare()
+
+    /** Start recording with the chosen settings (indices into the option lists in RecordUiConfig). */
+    fun onRecordStart(fpsIndex: Int, resolutionIndex: Int, quality: Int, recordUI: Boolean)
 }
 
 fun buildXServerDrawerState(
@@ -603,6 +753,20 @@ fun buildXServerDrawerState(
     vividEnabled: Boolean = false,
     vividStrength: Int = 100,
     colorProfile: Int = 0,
+    brightness: Int = 0,
+    contrast: Int = 0,
+    gammaPercent: Int = 100,
+    scaleFilter: Int = 0,
+    saturation: Int = 100,
+    temperature: Int = 0,
+    tint: Int = 0,
+    sharpenEnabled: Boolean = false,
+    sharpenStrength: Int = 50,
+    scanlinesEnabled: Boolean = false,
+    scanlinesIntensity: Int = 50,
+    pixelateEnabled: Boolean = false,
+    pixelateBlock: Int = 6,
+    colorBlind: Int = 0,
     inputControlsProfileNames: List<String> = emptyList(),
     inputControlsSelectedProfileIndex: Int = 0,
     inputControlsStyleNames: List<String> = emptyList(),
@@ -619,6 +783,14 @@ fun buildXServerDrawerState(
     fullscreenEnabled: Boolean = false,
     maxRefreshRate: Int = 60,
     refactorSizeEnabled: Boolean = false,
+    recordingActive: Boolean = false,
+    recordConfig: RecordUiConfig = RecordUiConfig(),
+    screenTouchMode: Int = 0,
+    rtsGesturesEnabled: Boolean = false,
+    gestureProfileNames: List<String> = emptyList(),
+    gestureSelectedProfileIndex: Int = 0,
+    rightStickSensitivity: Float = 1.0f,
+    screenTouchRsSensitivity: Float = 1.25f,
 ): XServerDrawerState {
     val items =
         mutableListOf(
@@ -651,20 +823,11 @@ fun buildXServerDrawerState(
                 active = gyroscopeEnabled,
             ),
             XServerDrawerItem(
-                itemId = R.id.main_menu_relative_mouse_movement,
-                title = context.getString(R.string.session_drawer_relative_mouse_movement),
-                subtitle =
-                    if (relativeMouseEnabled) context.getString(R.string.common_ui_enabled) else context.getString(R.string.common_ui_disabled),
-                icon = Icons.Outlined.Mouse,
-                active = relativeMouseEnabled,
-            ),
-            XServerDrawerItem(
-                itemId = R.id.main_menu_disable_mouse,
-                title = context.getString(R.string.session_drawer_mouse_input),
-                subtitle =
-                    if (mouseDisabled) context.getString(R.string.common_ui_disabled) else context.getString(R.string.common_ui_enabled),
-                icon = Icons.Outlined.Mouse,
-                active = !mouseDisabled,
+                itemId = R.id.main_menu_touch,
+                title = context.getString(R.string.session_drawer_touch),
+                subtitle = "",
+                icon = Icons.Outlined.TouchApp,
+                active = screenTouchMode != 0 || rtsGesturesEnabled || !mouseDisabled,
             ),
             XServerDrawerItem(
                 itemId = R.id.main_menu_toggle_fullscreen,
@@ -678,7 +841,10 @@ fun buildXServerDrawerState(
                 title = context.getString(R.string.session_drawer_screen_effects),
                 subtitle = context.getString(R.string.session_drawer_screen_effects_subtitle),
                 icon = Icons.Outlined.Tune,
-                active = sgsrEnabled || vividEnabled || colorProfile > 0,
+                active = sgsrEnabled || vividEnabled || colorProfile > 0 ||
+                    brightness != 0 || contrast != 0 || gammaPercent != 100 || scaleFilter != 0 ||
+                    saturation != 100 || temperature != 0 || tint != 0 ||
+                    sharpenEnabled || scanlinesEnabled || pixelateEnabled || colorBlind != 0,
             ),
             XServerDrawerItem(
                 itemId = R.id.main_menu_pause,
@@ -724,6 +890,15 @@ fun buildXServerDrawerState(
             icon = Icons.AutoMirrored.Outlined.ViewList,
         )
 
+    items +=
+        XServerDrawerItem(
+            itemId = R.id.main_menu_record,
+            title = context.getString(R.string.session_drawer_rail_label_record),
+            subtitle = "",
+            icon = Icons.Outlined.FiberManualRecord,
+            active = recordingActive,
+        )
+
     if (showLogs) {
         items.add(
             XServerDrawerItem(
@@ -744,6 +919,7 @@ fun buildXServerDrawerState(
         )
 
     return XServerDrawerState(
+        recordConfig = recordConfig,
         items = items,
         hudTransparency = hudTransparency,
         hudBackgroundAlphaEnabled = hudBackgroundAlphaEnabled,
@@ -775,6 +951,20 @@ fun buildXServerDrawerState(
         vividEnabled = vividEnabled,
         vividStrength = vividStrength,
         colorProfile = colorProfile,
+        brightness = brightness,
+        contrast = contrast,
+        gammaPercent = gammaPercent,
+        scaleFilter = scaleFilter,
+        saturation = saturation,
+        temperature = temperature,
+        tint = tint,
+        sharpenEnabled = sharpenEnabled,
+        sharpenStrength = sharpenStrength,
+        scanlinesEnabled = scanlinesEnabled,
+        scanlinesIntensity = scanlinesIntensity,
+        pixelateEnabled = pixelateEnabled,
+        pixelateBlock = pixelateBlock,
+        colorBlind = colorBlind,
         inputControlsProfileNames = inputControlsProfileNames,
         inputControlsSelectedProfileIndex = inputControlsSelectedProfileIndex,
         inputControlsStyleNames = inputControlsStyleNames,
@@ -788,6 +978,14 @@ fun buildXServerDrawerState(
         inputControlsGamepadVibration = inputControlsGamepadVibration,
         inputControlsGcmRumbleMode = inputControlsGcmRumbleMode,
         cursorSpeed = cursorSpeed,
+        mouseEnabled = !mouseDisabled,
+        relativeMouseEnabled = relativeMouseEnabled,
+        screenTouchMode = screenTouchMode,
+        rtsGesturesEnabled = rtsGesturesEnabled,
+        gestureProfileNames = gestureProfileNames,
+        gestureSelectedProfileIndex = gestureSelectedProfileIndex,
+        rightStickSensitivity = rightStickSensitivity,
+        screenTouchRsSensitivity = screenTouchRsSensitivity,
     )
 }
 
@@ -815,6 +1013,78 @@ fun setupXServerDrawerComposeView(
         }
     }
 }
+
+// Append the always-present "Output" tab item and its state to the drawer state.
+fun withOutputState(
+    state: XServerDrawerState,
+    swapActive: Boolean,
+    displayName: String,
+    resolutionLabels: List<String>,
+    selectedResolutionIndex: Int,
+    refreshLabels: List<String>,
+    selectedRefreshIndex: Int,
+    aspectMode: Int,
+    gameModeSupported: Boolean,
+    gameModeEnabled: Boolean,
+    panelScaling: Boolean,
+    panelNative: String,
+    displayAvailable: Boolean,
+): XServerDrawerState {
+    val outputItem =
+        XServerDrawerItem(
+            itemId = R.id.main_menu_output,
+            title = "Output",
+            subtitle = "",
+            icon = Icons.Outlined.Monitor,
+        )
+    return state.copy(
+        items = state.items + outputItem,
+        outputSwapActive = swapActive,
+        outputDisplayName = displayName,
+        outputResolutionLabels = resolutionLabels,
+        outputSelectedResolutionIndex = selectedResolutionIndex,
+        outputRefreshLabels = refreshLabels,
+        outputSelectedRefreshIndex = selectedRefreshIndex,
+        outputAspectMode = aspectMode,
+        outputGameModeSupported = gameModeSupported,
+        outputGameModeEnabled = gameModeEnabled,
+        outputPanelScaling = panelScaling,
+        outputPanelNative = panelNative,
+        outputDisplayAvailable = displayAvailable,
+    )
+}
+
+// Overlay Viture-glasses control state onto the output state (only when Viture glasses are connected).
+fun withVitureState(
+    state: XServerDrawerState,
+    name: String,
+    supportsBrightness: Boolean,
+    brightness: Int,
+    brightnessMax: Int,
+    supportsFilm: Boolean,
+    filmStepped: Boolean,
+    film: Int,
+    supports3D: Boolean,
+    threeD: Boolean,
+    supportsVolume: Boolean,
+    volume: Int,
+    volumeMax: Int,
+): XServerDrawerState =
+    state.copy(
+        outputVitureConnected = true,
+        outputVitureName = name,
+        outputVitureSupportsBrightness = supportsBrightness,
+        outputVitureBrightness = brightness,
+        outputVitureBrightnessMax = brightnessMax,
+        outputVitureSupportsFilm = supportsFilm,
+        outputVitureFilmStepped = filmStepped,
+        outputVitureFilm = film,
+        outputVitureSupports3D = supports3D,
+        outputViture3D = threeD,
+        outputVitureSupportsVolume = supportsVolume,
+        outputVitureVolume = volume,
+        outputVitureVolumeMax = volumeMax,
+    )
 
 @Composable
 internal fun XServerDrawerContent(
@@ -908,7 +1178,9 @@ internal fun XServerDrawerContent(
                                 DrawerPane.INPUT_CONTROLS -> InputControlsPaneContent(state = state, listener = listener)
                                 DrawerPane.HUD -> HUDPaneContent(state = state, listener = listener)
                                 DrawerPane.GYROSCOPE -> GyroscopePaneContent(state = state, listener = listener)
+                                DrawerPane.TOUCH -> TouchPaneContent(state = state, listener = listener, onClose = { onOpenPaneChange(null) })
                                 DrawerPane.SCREEN_EFFECTS -> ScreenEffectsPaneContent(state = state, listener = listener)
+                                DrawerPane.OUTPUT -> OutputPaneContent(state = state, listener = listener)
                                 DrawerPane.TASK_MANAGER ->
                                     TaskManagerPaneContent(
                                         taskManagerState = taskManagerState,
@@ -928,6 +1200,7 @@ internal fun XServerDrawerContent(
                                         cardsRevealed = cardsRevealed.value,
                                         onOpenTaskManager = { onOpenPaneChange(DrawerPane.TASK_MANAGER) },
                                         onOpenLogs = { onOpenPaneChange(DrawerPane.LOGS) },
+                                        onOpenTouch = { onOpenPaneChange(DrawerPane.TOUCH) },
                                     )
                             }
                         }
@@ -1170,54 +1443,79 @@ private fun ActionCardGrid(
     cardsRevealed: Boolean,
     onOpenTaskManager: () -> Unit,
     onOpenLogs: () -> Unit,
+    onOpenTouch: () -> Unit,
 ) {
     val paneScale = LocalPaneScale.current
     val cards =
         state.items.filter {
             it.itemId !in RAIL_PANE_ITEM_IDS && it.itemId !in PINNED_BOTTOM_ITEM_IDS
         }
+    var showRecordSettings by remember { mutableStateOf(false) }
 
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = (10f * paneScale).dp, vertical = (10f * paneScale).dp),
-    ) {
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ActionCardSpacing),
-            verticalArrangement = Arrangement.spacedBy(ActionCardSpacing),
-            maxItemsInEachRow = ActionCardColumns,
+    val verticalPadding = (10f * paneScale).dp
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val rows = ((cards.size + ActionCardColumns - 1) / ActionCardColumns).coerceAtLeast(1)
+        val rowHeight =
+            ((maxHeight - verticalPadding * 2 - ActionCardSpacing * (rows - 1)) / rows)
+                .coerceAtLeast(ActionCardMinHeight * paneScale)
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = (10f * paneScale).dp, vertical = verticalPadding),
         ) {
-            cards.forEachIndexed { index, item ->
-                val label = railLabelResFor(item.itemId)?.let { stringResource(it) } ?: item.title
-                ActionCard(
-                    item = item,
-                    label = label,
-                    revealIndex = index,
-                    revealed = cardsRevealed,
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .heightIn(min = ActionCardMinHeight * paneScale),
-                    onClick = {
-                        when (item.itemId) {
-                            R.id.main_menu_task_manager -> onOpenTaskManager()
-                            R.id.main_menu_logs -> onOpenLogs()
-                            R.id.main_menu_relative_mouse_movement,
-                            R.id.main_menu_disable_mouse,
-                            R.id.main_menu_toggle_fullscreen -> listener.onActionSelected(item.itemId)
-                            else -> listener.onActionSelected(item.itemId)
-                        }
-                    },
-                )
-            }
-            val trailing = (ActionCardColumns - cards.size % ActionCardColumns) % ActionCardColumns
-            repeat(trailing) {
-                Spacer(modifier = Modifier.weight(1f))
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(ActionCardSpacing),
+                verticalArrangement = Arrangement.spacedBy(ActionCardSpacing),
+                maxItemsInEachRow = ActionCardColumns,
+            ) {
+                cards.forEachIndexed { index, item ->
+                    val label = railLabelResFor(item.itemId)?.let { stringResource(it) } ?: item.title
+                    ActionCard(
+                        item = item,
+                        label = label,
+                        revealIndex = index,
+                        revealed = cardsRevealed,
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .height(rowHeight),
+                        onClick = {
+                            when (item.itemId) {
+                                R.id.main_menu_task_manager -> onOpenTaskManager()
+                                R.id.main_menu_logs -> onOpenLogs()
+                                // Recording: stop. Otherwise open the settings popup.
+                                R.id.main_menu_record ->
+                                    if (item.active) listener.onActionSelected(item.itemId)
+                                    else showRecordSettings = true
+                                R.id.main_menu_touch -> onOpenTouch()
+                                R.id.main_menu_relative_mouse_movement,
+                                R.id.main_menu_disable_mouse,
+                                R.id.main_menu_toggle_fullscreen -> listener.onActionSelected(item.itemId)
+                                else -> listener.onActionSelected(item.itemId)
+                            }
+                        },
+                    )
+                }
+                val trailing = (ActionCardColumns - cards.size % ActionCardColumns) % ActionCardColumns
+                repeat(trailing) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
             }
         }
+    }
+
+    if (showRecordSettings) {
+        RecordSettingsDialog(
+            config = state.recordConfig,
+            onDismiss = { showRecordSettings = false },
+            onRecordNow = { fpsIndex, resIndex, quality, recordUI ->
+                showRecordSettings = false
+                listener.onRecordStart(fpsIndex, resIndex, quality, recordUI)
+            },
+        )
     }
 }
 
@@ -1469,6 +1767,31 @@ private fun ThinDivider() {
     )
 }
 
+@Composable
+private fun DrawerResetRow(label: String, onClick: () -> Unit) {
+    val paneScale = LocalPaneScale.current
+    val shape = RoundedCornerShape((14f * paneScale).dp)
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PaneInnerResting)
+                .border(1.dp, RestingCardBorder, shape)
+                .clickable(onClick = onClick)
+                .padding(horizontal = (12f * paneScale).dp, vertical = (10f * paneScale).dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = label,
+            color = DrawerAccent,
+            fontSize = (14f * paneScale).sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 private fun railLabelResFor(itemId: Int): Int? =
     when (itemId) {
         R.id.main_menu_keyboard -> R.string.session_drawer_rail_label_keyboard
@@ -1479,6 +1802,7 @@ private fun railLabelResFor(itemId: Int): Int? =
         R.id.main_menu_pip_mode -> R.string.session_drawer_rail_label_pip
         R.id.main_menu_magnifier -> R.string.session_drawer_rail_label_magnifier
         R.id.main_menu_task_manager -> R.string.session_drawer_rail_label_task_manager
+        R.id.main_menu_record -> R.string.session_drawer_rail_label_record
         R.id.main_menu_logs -> R.string.session_drawer_rail_label_logs
         else -> null
     }
@@ -1631,6 +1955,88 @@ private fun HUDPaneContent(
                     onCheckedChange = listener::onDualSeriesBatteryChanged,
                 )
             }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TouchPaneContent(
+    state: XServerDrawerState,
+    listener: XServerDrawerActionListener,
+    onClose: () -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val paneScale = computePaneScale(maxHeight)
+        CompositionLocalProvider(LocalPaneScale provides paneScale) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = (12f * paneScale).dp, vertical = (12f * paneScale).dp),
+                verticalArrangement = Arrangement.spacedBy((10f * paneScale).dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size((30f * paneScale).dp)
+                            .clip(RoundedCornerShape((8f * paneScale).dp))
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onClose,
+                            ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                        contentDescription = stringResource(R.string.common_ui_back),
+                        tint = DrawerTextSecondary,
+                        modifier = Modifier.size((20f * paneScale).dp),
+                    )
+                }
+                DrawerBooleanRow(
+                    title = stringResource(R.string.session_drawer_mouse_input),
+                    checked = state.mouseEnabled,
+                    onCheckedChange = { listener.onActionSelected(R.id.main_menu_disable_mouse) },
+                )
+                DrawerBooleanRow(
+                    title = stringResource(R.string.session_drawer_relative_mouse_movement),
+                    checked = state.relativeMouseEnabled,
+                    onCheckedChange = { listener.onActionSelected(R.id.main_menu_relative_mouse_movement) },
+                )
+                DrawerBooleanRow(
+                    title = stringResource(R.string.session_drawer_touch_trackpad),
+                    checked = state.screenTouchMode == 0 && !state.rtsGesturesEnabled,
+                    onCheckedChange = { if (it) listener.onScreenTouchModeChanged(0) },
+                )
+                DrawerBooleanRow(
+                    title = stringResource(R.string.session_drawer_touch_touchscreen),
+                    checked = state.screenTouchMode == 1 && !state.rtsGesturesEnabled,
+                    onCheckedChange = { listener.onScreenTouchModeChanged(if (it) 1 else 0) },
+                )
+                DrawerBooleanRow(
+                    title = stringResource(R.string.session_drawer_touch_map_right_stick),
+                    checked = state.screenTouchMode == 2 && !state.rtsGesturesEnabled,
+                    onCheckedChange = { listener.onScreenTouchModeChanged(if (it) 2 else 0) },
+                )
+                DrawerBooleanRow(
+                    title = stringResource(R.string.session_drawer_rts_gestures),
+                    checked = state.rtsGesturesEnabled,
+                    onCheckedChange = { listener.onRtsGesturesToggled(it) },
+                )
+                if (state.rtsGesturesEnabled) {
+                    Column(verticalArrangement = Arrangement.spacedBy((8f * paneScale).dp)) {
+                        PaneSectionLabel(stringResource(R.string.session_gesture_profile_section))
+                        InputControlsProfileSelector(
+                            profileNames = state.gestureProfileNames,
+                            selectedIndex = state.gestureSelectedProfileIndex,
+                            onProfileSelected = listener::onGestureProfileSelected,
+                            onEditClick = listener::onRtsGesturesEditClick,
+                        )
+                    }
+                }
             }
         }
     }
@@ -1889,6 +2295,17 @@ private fun InputControlsPaneContent(
                     valueRange = 10f..300f,
                     steps = 0,
                     onValueChange = { listener.onCursorSpeedChanged(it / 100f) },
+                )
+
+                val rsMapMode = state.screenTouchMode == 2
+                val rsValue = if (rsMapMode) state.screenTouchRsSensitivity else state.rightStickSensitivity
+                DrawerSliderRow(
+                    label = stringResource(R.string.session_drawer_right_stick_sensitivity),
+                    valueText = "${Math.round(rsValue * 100)}%",
+                    value = rsValue * 100f,
+                    valueRange = (if (rsMapMode) 25f else 10f)..200f,
+                    steps = 0,
+                    onValueChange = { listener.onRightStickSensitivityChanged(it / 100f) },
                 )
 
                 LaunchedEffect(gcmEnabled) {
@@ -2329,18 +2746,21 @@ private fun ScreenEffectsPaneContent(
 
                     val profiles =
                         listOf(
-                            stringResource(R.string.session_drawer_color_profile_disabled),
-                            stringResource(R.string.session_drawer_color_profile_hdr),
-                            stringResource(R.string.session_drawer_color_profile_natural),
-                            stringResource(R.string.session_drawer_color_profile_crt),
+                            0 to stringResource(R.string.session_drawer_color_profile_disabled),
+                            1 to stringResource(R.string.session_drawer_color_profile_hdr),
+                            2 to stringResource(R.string.session_drawer_color_profile_natural),
+                            4 to stringResource(R.string.session_drawer_color_profile_toon),
+                            3 to stringResource(R.string.session_drawer_color_profile_crt),
+                            5 to stringResource(R.string.session_drawer_color_profile_ntsc),
+                            6 to stringResource(R.string.session_drawer_color_profile_ntsc2),
                         )
 
                     ChipFlow {
-                        profiles.forEachIndexed { index, label ->
+                        profiles.forEach { (id, label) ->
                             HUDToggleChip(
                                 label = label,
-                                checked = state.colorProfile == index,
-                                onClick = { listener.onColorProfileSelected(index) },
+                                checked = state.colorProfile == id,
+                                onClick = { listener.onColorProfileSelected(id) },
                             )
                         }
                     }
@@ -2361,12 +2781,507 @@ private fun ScreenEffectsPaneContent(
                             onValueChange = { listener.onVividStrengthChanged(it.roundToInt()) },
                         )
                     }
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_drawer_sharpen),
+                        checked = state.sharpenEnabled,
+                        onCheckedChange = listener::onSharpenEnabledChanged,
+                    )
+
+                    if (state.sharpenEnabled) {
+                        DrawerSliderRow(
+                            label = stringResource(R.string.session_drawer_strength),
+                            valueText = "${state.sharpenStrength}%",
+                            value = state.sharpenStrength.toFloat(),
+                            valueRange = 0f..100f,
+                            steps = 99,
+                            onValueChange = { listener.onSharpenStrengthChanged(it.roundToInt().coerceIn(0, 100)) },
+                        )
+                    }
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_drawer_scanlines),
+                        checked = state.scanlinesEnabled,
+                        onCheckedChange = listener::onScanlinesEnabledChanged,
+                    )
+
+                    if (state.scanlinesEnabled) {
+                        DrawerSliderRow(
+                            label = stringResource(R.string.session_drawer_intensity),
+                            valueText = "${state.scanlinesIntensity}%",
+                            value = state.scanlinesIntensity.toFloat(),
+                            valueRange = 0f..100f,
+                            steps = 99,
+                            onValueChange = { listener.onScanlinesIntensityChanged(it.roundToInt().coerceIn(0, 100)) },
+                        )
+                    }
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_drawer_pixelate),
+                        checked = state.pixelateEnabled,
+                        onCheckedChange = listener::onPixelateEnabledChanged,
+                    )
+
+                    if (state.pixelateEnabled) {
+                        DrawerSliderRow(
+                            label = stringResource(R.string.session_drawer_block_size),
+                            valueText = "${state.pixelateBlock}px",
+                            value = state.pixelateBlock.toFloat(),
+                            valueRange = 2f..14f,
+                            steps = 11,
+                            onValueChange = { listener.onPixelateBlockChanged(it.roundToInt().coerceIn(2, 14)) },
+                        )
+                    }
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_drawer_brightness),
+                        valueText = "${state.brightness}",
+                        value = state.brightness.toFloat(),
+                        valueRange = -100f..100f,
+                        steps = 39,
+                        onValueChange = { listener.onBrightnessChanged(it.roundToInt().coerceIn(-100, 100)) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_drawer_contrast),
+                        valueText = "${state.contrast}",
+                        value = state.contrast.toFloat(),
+                        valueRange = -100f..100f,
+                        steps = 39,
+                        onValueChange = { listener.onContrastChanged(it.roundToInt().coerceIn(-100, 100)) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_drawer_gamma),
+                        valueText = String.format("%.2fx", state.gammaPercent / 100f),
+                        value = state.gammaPercent.toFloat(),
+                        valueRange = 50f..250f,
+                        steps = 19,
+                        onValueChange = { listener.onGammaChanged(it.roundToInt().coerceIn(50, 250)) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_drawer_saturation),
+                        valueText = "${state.saturation}%",
+                        value = state.saturation.toFloat(),
+                        valueRange = 0f..200f,
+                        steps = 39,
+                        onValueChange = { listener.onSaturationChanged(it.roundToInt().coerceIn(0, 200)) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_drawer_temperature),
+                        valueText = "${state.temperature}",
+                        value = state.temperature.toFloat(),
+                        valueRange = -100f..100f,
+                        steps = 39,
+                        onValueChange = { listener.onTemperatureChanged(it.roundToInt().coerceIn(-100, 100)) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_drawer_tint),
+                        valueText = "${state.tint}",
+                        value = state.tint.toFloat(),
+                        valueRange = -100f..100f,
+                        steps = 39,
+                        onValueChange = { listener.onTintChanged(it.roundToInt().coerceIn(-100, 100)) },
+                    )
+
+                    DrawerResetRow(
+                        label = stringResource(R.string.session_drawer_reset_effects),
+                        onClick = listener::onResetEffects,
+                    )
+                }
+
+                ThinDivider()
+
+                Column(verticalArrangement = Arrangement.spacedBy((8f * paneScale).dp)) {
+                    PaneSectionLabel(stringResource(R.string.session_drawer_color_blind))
+
+                    Row(horizontalArrangement = Arrangement.spacedBy((8f * paneScale).dp)) {
+                        HUDToggleChip(
+                            label = stringResource(R.string.session_drawer_color_blind_protan),
+                            checked = state.colorBlind == 1,
+                            onClick = { listener.onColorBlindSelected(if (state.colorBlind == 1) 0 else 1) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        HUDToggleChip(
+                            label = stringResource(R.string.session_drawer_color_blind_deutan),
+                            checked = state.colorBlind == 2,
+                            onClick = { listener.onColorBlindSelected(if (state.colorBlind == 2) 0 else 2) },
+                            modifier = Modifier.weight(1f),
+                        )
+                        HUDToggleChip(
+                            label = stringResource(R.string.session_drawer_color_blind_tritan),
+                            checked = state.colorBlind == 3,
+                            onClick = { listener.onColorBlindSelected(if (state.colorBlind == 3) 0 else 3) },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
+                ThinDivider()
+
+                Column(verticalArrangement = Arrangement.spacedBy((8f * paneScale).dp)) {
+                    PaneSectionLabel(stringResource(R.string.session_drawer_scale))
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_drawer_scale_nearest),
+                        checked = state.scaleFilter == 1,
+                        onCheckedChange = { on -> listener.onScaleFilterSelected(if (on) 1 else 0) },
+                    )
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_drawer_scale_linear),
+                        checked = state.scaleFilter == 2,
+                        onCheckedChange = { on -> listener.onScaleFilterSelected(if (on) 2 else 0) },
+                    )
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_drawer_scale_bicubic),
+                        checked = state.scaleFilter == 3,
+                        onCheckedChange = { on -> listener.onScaleFilterSelected(if (on) 3 else 0) },
+                    )
                 }
             }
         }
     }
 }
 
+
+@Composable
+private fun OutputPaneContent(
+    state: XServerDrawerState,
+    listener: XServerDrawerActionListener,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val paneScale = computePaneScale(maxHeight)
+        CompositionLocalProvider(LocalPaneScale provides paneScale) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = (12f * paneScale).dp, vertical = (12f * paneScale).dp),
+                verticalArrangement = Arrangement.spacedBy((10f * paneScale).dp),
+            ) {
+                if (state.outputSwapActive) {
+                    OutputActiveControls(state = state, listener = listener, paneScale = paneScale)
+                } else if (state.outputDisplayAvailable) {
+                    OutputSendToDisplay(state = state, listener = listener, paneScale = paneScale)
+                } else {
+                    OutputCastEntry(listener = listener, paneScale = paneScale)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OutputActiveControls(
+    state: XServerDrawerState,
+    listener: XServerDrawerActionListener,
+    paneScale: Float,
+) {
+    OutputDeviceHeader(state = state, paneScale = paneScale)
+
+    OutputCard(paneScale = paneScale, title = stringResource(R.string.session_drawer_output_display)) {
+        if (state.outputResolutionLabels.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy((6f * paneScale).dp)) {
+                OutputFieldLabel(stringResource(R.string.session_drawer_output_resolution), paneScale)
+                InputControlsSimpleDropdown(
+                    options = state.outputResolutionLabels,
+                    selectedIndex = state.outputSelectedResolutionIndex,
+                    onSelected = listener::onOutputResolutionSelected,
+                )
+                Text(
+                    text = if (state.outputPanelScaling) {
+                        stringResource(R.string.session_drawer_output_scaling_note, state.outputPanelNative)
+                    } else {
+                        stringResource(R.string.session_drawer_output_render_note)
+                    },
+                    color = DrawerTextSecondary,
+                    fontSize = (11f * paneScale).sp,
+                    lineHeight = (15f * paneScale).sp,
+                )
+            }
+        }
+        if (!state.outputPanelScaling && state.outputRefreshLabels.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy((6f * paneScale).dp)) {
+                OutputFieldLabel(stringResource(R.string.session_drawer_output_refresh_rate), paneScale)
+                InputControlsSimpleDropdown(
+                    options = state.outputRefreshLabels,
+                    selectedIndex = state.outputSelectedRefreshIndex,
+                    onSelected = listener::onOutputRefreshRateSelected,
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy((6f * paneScale).dp)) {
+            OutputFieldLabel(stringResource(R.string.session_drawer_output_aspect_ratio), paneScale)
+            val aspectLabels =
+                listOf(
+                    stringResource(R.string.session_drawer_output_aspect_fit),
+                    stringResource(R.string.session_drawer_output_aspect_stretch),
+                    stringResource(R.string.session_drawer_output_aspect_zoom),
+                )
+            ChipFlow {
+                aspectLabels.forEachIndexed { index, label ->
+                    HUDToggleChip(
+                        label = label,
+                        checked = state.outputAspectMode == index,
+                        onClick = { listener.onOutputAspectModeSelected(index) },
+                    )
+                }
+            }
+        }
+    }
+
+    if (state.outputGameModeSupported) {
+        OutputCard(paneScale = paneScale, title = stringResource(R.string.session_drawer_output_game_mode)) {
+            ChipFlow {
+                HUDToggleChip(
+                    label = stringResource(R.string.session_drawer_output_game_mode_on),
+                    checked = state.outputGameModeEnabled,
+                    onClick = { listener.onOutputGameModeToggled(true) },
+                )
+                HUDToggleChip(
+                    label = stringResource(R.string.session_drawer_output_game_mode_off),
+                    checked = !state.outputGameModeEnabled,
+                    onClick = { listener.onOutputGameModeToggled(false) },
+                )
+            }
+            Text(
+                text = stringResource(R.string.session_drawer_output_game_mode_note),
+                color = DrawerTextSecondary,
+                fontSize = (11f * paneScale).sp,
+                lineHeight = (15f * paneScale).sp,
+            )
+        }
+    }
+
+    if (state.outputVitureConnected) {
+        OutputGlassesCard(state = state, listener = listener, paneScale = paneScale)
+    }
+
+    OutputPaneButton(
+        label = stringResource(R.string.session_drawer_output_return_to_phone),
+        paneScale = paneScale,
+        onClick = listener::onOutputReturnToPhone,
+    )
+}
+
+@Composable
+private fun OutputGlassesCard(
+    state: XServerDrawerState,
+    listener: XServerDrawerActionListener,
+    paneScale: Float,
+) {
+    OutputCard(
+        paneScale = paneScale,
+        title = state.outputVitureName.ifEmpty { stringResource(R.string.session_drawer_output_glasses) },
+    ) {
+        if (state.outputVitureSupportsBrightness) {
+            DrawerSliderRow(
+                label = stringResource(R.string.session_drawer_output_brightness),
+                valueText = "${state.outputVitureBrightness}/${state.outputVitureBrightnessMax}",
+                value = state.outputVitureBrightness.toFloat(),
+                valueRange = 0f..state.outputVitureBrightnessMax.toFloat(),
+                steps = (state.outputVitureBrightnessMax - 1).coerceAtLeast(0),
+                onValueChange = { listener.onOutputVitureBrightness(it.roundToInt()) },
+            )
+        }
+        if (state.outputVitureSupportsFilm) {
+            if (state.outputVitureFilmStepped) {
+                DrawerSliderRow(
+                    label = stringResource(R.string.session_drawer_output_shade),
+                    valueText = "${state.outputVitureFilm}/8",
+                    value = state.outputVitureFilm.toFloat(),
+                    valueRange = 0f..8f,
+                    steps = 7,
+                    onValueChange = { listener.onOutputVitureFilm(it.roundToInt()) },
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy((6f * paneScale).dp)) {
+                    OutputFieldLabel(stringResource(R.string.session_drawer_output_shade), paneScale)
+                    ChipFlow {
+                        HUDToggleChip(
+                            label = stringResource(R.string.session_drawer_output_game_mode_on),
+                            checked = state.outputVitureFilm > 0,
+                            onClick = { listener.onOutputVitureFilm(1) },
+                        )
+                        HUDToggleChip(
+                            label = stringResource(R.string.session_drawer_output_game_mode_off),
+                            checked = state.outputVitureFilm == 0,
+                            onClick = { listener.onOutputVitureFilm(0) },
+                        )
+                    }
+                }
+            }
+        }
+        if (state.outputVitureSupportsVolume) {
+            DrawerSliderRow(
+                label = stringResource(R.string.session_drawer_output_volume),
+                valueText = "${state.outputVitureVolume}/${state.outputVitureVolumeMax}",
+                value = state.outputVitureVolume.toFloat(),
+                valueRange = 0f..state.outputVitureVolumeMax.toFloat(),
+                steps = (state.outputVitureVolumeMax - 1).coerceAtLeast(0),
+                onValueChange = { listener.onOutputVitureVolume(it.roundToInt()) },
+            )
+        }
+        if (state.outputVitureSupports3D) {
+            Column(verticalArrangement = Arrangement.spacedBy((6f * paneScale).dp)) {
+                OutputFieldLabel(stringResource(R.string.session_drawer_output_3d), paneScale)
+                ChipFlow {
+                    HUDToggleChip(
+                        label = stringResource(R.string.session_drawer_output_game_mode_on),
+                        checked = state.outputViture3D,
+                        onClick = { listener.onOutputViture3D(true) },
+                    )
+                    HUDToggleChip(
+                        label = stringResource(R.string.session_drawer_output_game_mode_off),
+                        checked = !state.outputViture3D,
+                        onClick = { listener.onOutputViture3D(false) },
+                    )
+                }
+            }
+        }
+        Text(
+            text = stringResource(R.string.session_drawer_output_glasses_note),
+            color = DrawerTextSecondary,
+            fontSize = (11f * paneScale).sp,
+            lineHeight = (15f * paneScale).sp,
+        )
+    }
+}
+
+@Composable
+private fun OutputCard(
+    paneScale: Float,
+    title: String,
+    content: @Composable () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape((14f * paneScale).dp))
+                .background(PaneInnerResting)
+                .border(1.dp, RestingCardBorder, RoundedCornerShape((14f * paneScale).dp))
+                .padding(horizontal = (12f * paneScale).dp, vertical = (12f * paneScale).dp),
+        verticalArrangement = Arrangement.spacedBy((10f * paneScale).dp),
+    ) {
+        PaneSectionLabel(title)
+        content()
+    }
+}
+
+@Composable
+private fun OutputFieldLabel(text: String, paneScale: Float) {
+    Text(
+        text = text,
+        color = DrawerTextSecondary,
+        fontSize = (12f * paneScale).sp,
+        fontWeight = FontWeight.Medium,
+    )
+}
+
+@Composable
+private fun OutputDeviceHeader(state: XServerDrawerState, paneScale: Float) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy((8f * paneScale).dp),
+        modifier = Modifier.padding(horizontal = (2f * paneScale).dp),
+    ) {
+        Icon(
+            imageVector = Icons.Outlined.Monitor,
+            contentDescription = null,
+            tint = DrawerAccent,
+            modifier = Modifier.size((22f * paneScale).dp),
+        )
+        Text(
+            text = state.outputDisplayName.ifEmpty { stringResource(R.string.session_drawer_output_title) },
+            color = DrawerTextPrimary,
+            fontSize = (15f * paneScale).sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun OutputSendToDisplay(
+    state: XServerDrawerState,
+    listener: XServerDrawerActionListener,
+    paneScale: Float,
+) {
+    OutputDeviceHeader(state = state, paneScale = paneScale)
+    OutputPaneButton(
+        label = stringResource(R.string.session_drawer_output_send_to_display),
+        paneScale = paneScale,
+        onClick = listener::onOutputSwapToDisplay,
+    )
+    Text(
+        text = stringResource(R.string.session_drawer_output_send_note),
+        color = DrawerTextSecondary,
+        fontSize = (11f * paneScale).sp,
+        lineHeight = (15f * paneScale).sp,
+    )
+}
+
+@Composable
+private fun OutputCastEntry(
+    listener: XServerDrawerActionListener,
+    paneScale: Float,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy((6f * paneScale).dp)) {
+        PaneSectionLabel(stringResource(R.string.session_drawer_output_cast_title))
+        Text(
+            text = stringResource(R.string.session_drawer_output_cast_body),
+            color = DrawerTextSecondary,
+            fontSize = (12f * paneScale).sp,
+            lineHeight = (16f * paneScale).sp,
+        )
+    }
+    OutputPaneButton(
+        label = stringResource(R.string.session_drawer_output_cast_button),
+        paneScale = paneScale,
+        onClick = listener::onOutputCastClick,
+    )
+    Text(
+        text = stringResource(R.string.session_drawer_output_cast_note),
+        color = DrawerTextSecondary,
+        fontSize = (11f * paneScale).sp,
+        lineHeight = (15f * paneScale).sp,
+    )
+}
+
+@Composable
+private fun OutputPaneButton(
+    label: String,
+    paneScale: Float,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape((14f * paneScale).dp))
+                .background(PaneInnerResting)
+                .border(1.dp, RestingCardBorder, RoundedCornerShape((14f * paneScale).dp))
+                .clickable { onClick() }
+                .padding(horizontal = (12f * paneScale).dp, vertical = (12f * paneScale).dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = label,
+            color = DrawerTextPrimary,
+            fontSize = (14f * paneScale).sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
 
 @Composable
 private fun TaskManagerPaneContent(
@@ -4312,6 +5227,135 @@ private fun DrawerBooleanRow(
                 interactionSource = switchInteractionSource,
                 colors = outlinedSwitchColors(DrawerAccent, DrawerTextSecondary),
             )
+        }
+    }
+}
+
+private val RECORD_QUALITY_LABELS = listOf("Performance", "Balance", "Quality")
+
+/** Centered popup for choosing recording fps / resolution / quality (+ Record UI), then Record Now. */
+@Composable
+private fun RecordSettingsDialog(
+    config: RecordUiConfig,
+    onDismiss: () -> Unit,
+    onRecordNow: (fpsIndex: Int, resolutionIndex: Int, quality: Int, recordUI: Boolean) -> Unit,
+) {
+    val fpsOptions = config.fpsOptions.ifEmpty { listOf(60) }
+    val resOptions = config.resolutionLabels.ifEmpty { listOf("Native") }
+
+    var fpsIndex by remember { mutableStateOf(config.fpsIndex.coerceIn(0, fpsOptions.lastIndex)) }
+    var resIndex by remember { mutableStateOf(config.resolutionIndex.coerceIn(0, resOptions.lastIndex)) }
+    var quality by remember { mutableStateOf(config.quality.coerceIn(0, RECORD_QUALITY_LABELS.lastIndex)) }
+    var recordUI by remember { mutableStateOf(config.recordUI) }
+
+    val shape = RoundedCornerShape(16.dp)
+    // Cap card height (landscape is short); settings scroll, the Record Now button stays pinned.
+    val maxCardHeight = (LocalConfiguration.current.screenHeightDp * 0.92f).dp
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 14.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .widthIn(max = 360.dp)
+                        .fillMaxWidth()
+                        .heightIn(max = maxCardHeight)
+                        .clip(shape)
+                        .background(PaneSurfaceColor)
+                        .border(1.dp, RestingCardBorder, shape)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.FiberManualRecord,
+                        contentDescription = null,
+                        tint = RecordRed,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Text(
+                        text = stringResource(R.string.session_record_settings_title),
+                        color = DrawerTextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+
+                // Scrollable settings above the pinned button.
+                Column(
+                    modifier = Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_record_fps),
+                        valueText = "${fpsOptions[fpsIndex]} fps",
+                        value = fpsIndex.toFloat(),
+                        valueRange = 0f..(fpsOptions.lastIndex.coerceAtLeast(1)).toFloat(),
+                        steps = (fpsOptions.size - 2).coerceAtLeast(0),
+                        onValueChange = { if (fpsOptions.size > 1) fpsIndex = it.roundToInt().coerceIn(0, fpsOptions.lastIndex) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_record_resolution),
+                        valueText = resOptions[resIndex],
+                        value = resIndex.toFloat(),
+                        valueRange = 0f..(resOptions.lastIndex.coerceAtLeast(1)).toFloat(),
+                        steps = (resOptions.size - 2).coerceAtLeast(0),
+                        onValueChange = { if (resOptions.size > 1) resIndex = it.roundToInt().coerceIn(0, resOptions.lastIndex) },
+                    )
+
+                    DrawerSliderRow(
+                        label = stringResource(R.string.session_record_quality),
+                        valueText = RECORD_QUALITY_LABELS[quality],
+                        value = quality.toFloat(),
+                        valueRange = 0f..(RECORD_QUALITY_LABELS.lastIndex).toFloat(),
+                        steps = (RECORD_QUALITY_LABELS.size - 2).coerceAtLeast(0),
+                        onValueChange = { quality = it.roundToInt().coerceIn(0, RECORD_QUALITY_LABELS.lastIndex) },
+                    )
+
+                    DrawerBooleanRow(
+                        title = stringResource(R.string.session_record_include_ui),
+                        checked = recordUI,
+                        onCheckedChange = { recordUI = it },
+                        subtitle = stringResource(R.string.session_record_include_ui_subtitle),
+                    )
+                }
+
+                // Record Now button (pinned).
+                Button(
+                    onClick = { onRecordNow(fpsIndex, resIndex, quality, recordUI) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor = RecordRed,
+                            contentColor = Color.White,
+                        ),
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.FiberManualRecord,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = stringResource(R.string.session_record_now),
+                        color = Color.White,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
         }
     }
 }

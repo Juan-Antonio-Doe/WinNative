@@ -22,6 +22,8 @@
 
 #define VK_FRAMES_IN_FLIGHT 2
 #define VK_MAX_SWAPCHAIN_IMAGES 8
+// Encoder input-surface swapchains can expose many more images than a display swapchain.
+#define VK_MAX_RECORD_IMAGES 32
 #define VK_MAX_EFFECTS 8
 #define VK_MAX_RENDERABLE_WINDOWS 64
 // Number of in-flight upload slots. Each slot owns a persistently-mapped staging buffer,
@@ -103,6 +105,15 @@ typedef enum VkEffectType {
     VK_EFFECT_HDR = 2,
     VK_EFFECT_NATURAL = 3,
     VK_EFFECT_SGSR1 = 4,
+    VK_EFFECT_TOON = 5,
+    VK_EFFECT_NTSC = 6,
+    VK_EFFECT_COLORADJ = 7,
+    VK_EFFECT_COLORGRADE = 8,
+    VK_EFFECT_SHARPEN = 9,
+    VK_EFFECT_SCANLINES = 10,
+    VK_EFFECT_NTSC2 = 11,
+    VK_EFFECT_COLORBLIND = 12,
+    VK_EFFECT_PIXELATE = 13,
     VK_EFFECT_COUNT
 } VkEffectType;
 
@@ -209,6 +220,35 @@ typedef struct VkSgsr1State {
     uint32_t    width;
     uint32_t    height;
 } VkSgsr1State;
+
+// Recording mirror: a second swapchain on a MediaCodec input surface; each frame is blitted from
+// the display swapchain into it and co-presented. Gated on rec.active.
+typedef struct VkRecordSwap {
+    bool             active;
+    bool             disabled;
+    ANativeWindow*   anw;
+    VkSurfaceKHR     surface;
+    VkSwapchainKHR   swapchain;
+    VkFormat         format;
+    VkExtent2D       extent;
+    uint32_t         image_count;
+    VkImage          images[VK_MAX_RECORD_IMAGES];
+    VkSemaphore      acquire[VK_FRAMES_IN_FLIGHT];
+    VkSemaphore      present_ready[VK_MAX_RECORD_IMAGES];
+    uint64_t         captured;
+    uint64_t         skipped;
+    uint64_t         min_interval_ns;
+    uint64_t         last_capture_ns;
+
+    // Record UI: alpha-blend an overlay texture over each captured frame.
+    bool             ui_enabled;
+    VkRenderPass     ui_pass;
+    VkPipeline       ui_pipeline;
+    VkImageView      views[VK_MAX_RECORD_IMAGES];
+    VkFramebuffer    framebuffers[VK_MAX_RECORD_IMAGES];
+    bool             fb_built;
+    struct VkTexture* ui_texture;
+} VkRecordSwap;
 
 // ============================================================
 // Staging pool for async texture uploads
@@ -358,6 +398,10 @@ typedef struct VkRenderer {
     bool             offscreen_built;
     VkSgsr1State     sgsr1;
 
+    // record_blit_src adds TRANSFER_SRC usage to the display swapchain (toggled by start/stop recording).
+    bool             record_blit_src;
+    VkRecordSwap     rec;
+
     // Quad vertex buffer (window/cursor)
     VkBuffer         quad_vbo;
     VkDeviceMemory   quad_vbo_memory;
@@ -366,6 +410,10 @@ typedef struct VkRenderer {
     // conversion. Created once at init; vkCreateSampler costs ~50-200µs on Adreno, so giving
     // every texture its own sampler is a non-trivial CPU+GPU tax during pixmap churn.
     VkSampler        shared_sampler;
+    VkSampler        shared_sampler_nearest;
+    VkSampler        shared_sampler_cubic;
+    bool             ext_filter_cubic;
+    int              scale_filter;
 
     // Per-frame
     VkCommandPool    cmd_pool;
@@ -450,6 +498,7 @@ void       vkr_image_barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout f
                              VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage,
                              VkAccessFlags src_access, VkAccessFlags dst_access);
 bool       vkr_create_sampler(VkRenderer* r, VkSamplerYcbcrConversion ycbcr, VkSampler* out);
+void       vkr_retarget_shared_sampler(VkRenderer* r);
 // Async layout transition through the staging pool. Submits a tiny command buffer that runs
 // the requested barrier, but does NOT wait for the GPU. The barrier is ordered before all
 // subsequent submits on the same queue per Vulkan spec, so callers can sample the image as
