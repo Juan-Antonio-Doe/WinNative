@@ -15,7 +15,6 @@ import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.hardware.input.InputManager;
 import android.net.Uri;
-import android.opengl.GLSurfaceView;
 import android.text.format.DateFormat;
 import android.os.Build;
 import android.os.Bundle;
@@ -28,11 +27,7 @@ import android.view.MotionEvent;
 import android.view.PointerIcon;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.ArrayAdapter;
-import android.widget.CheckBox;
 import android.widget.FrameLayout;
-import android.widget.Spinner;
 import android.widget.TextView;
 
 import org.json.JSONException;
@@ -163,10 +158,6 @@ import com.winlator.cmod.runtime.display.xserver.Window;
 import com.winlator.cmod.runtime.display.xserver.WindowManager;
 import com.winlator.cmod.runtime.display.xserver.XServer;
 
-import org.json.JSONArray;
-import org.json.JSONException;
-import org.json.JSONObject;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.File;
@@ -180,7 +171,6 @@ import java.util.Date;
 import java.util.List;
 import java.util.HashSet;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -2642,7 +2632,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             try {
                 if (perfController != null) perfController.stop();
             } catch (Throwable t) {
-                Timber.w("perfController.stop() failed", t);
+                Timber.w(t, "perfController.stop() failed");
             }
             return true;
         }
