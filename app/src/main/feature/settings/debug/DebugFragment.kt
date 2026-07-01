@@ -1,5 +1,6 @@
 // Settings > Debug fragment — hosts DebugScreen via ComposeView.
 package com.winlator.cmod.feature.settings
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
@@ -13,6 +14,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
@@ -25,6 +27,8 @@ import androidx.fragment.app.Fragment
 import androidx.preference.PreferenceManager
 import com.winlator.cmod.R
 import com.winlator.cmod.app.config.SettingsConfig
+import com.winlator.cmod.runtime.system.GeneratedLogTags
+import com.winlator.cmod.runtime.system.LogManager
 import com.winlator.cmod.shared.io.AssetPaths
 import com.winlator.cmod.shared.io.FileUtils
 import com.winlator.cmod.shared.io.StorageUtils
@@ -80,9 +84,29 @@ class DebugFragment : Fragment() {
                                         .stopAppLogging()
                                     com.winlator.cmod.runtime.system.LogManager
                                         .updateLoggingState(ctx)
+                                    com.winlator.cmod.runtime.system.LogManager
+                                        .clearManualTextFilter()
                                 }
                                 refresh()
                             },
+                            onExitReasonLogChanged = { checked ->
+                                preferences.edit { putBoolean("enable_exit_reason_log", checked) }
+                                refresh()
+                            },
+                            onCrashLogChanged = { checked ->
+                                preferences.edit { putBoolean("enable_crash_log", checked) }
+                                refresh()
+                            },
+                            onEventWatchLogChanged = { checked ->
+                                preferences.edit { putBoolean("enable_event_watch_log", checked) }
+                                refresh()
+                            },
+                            onTagFilterModeChanged = { mode -> LogManager.setTagFilterMode(requireContext(), mode); refresh() },
+                            onSelectedTagsChanged = { tags -> LogManager.setSelectedTags(requireContext(), tags.toSet()); refresh() },
+                            onAddCustomTag = { tag -> LogManager.addCustomTag(requireContext(), tag); refresh() },
+                            onRemoveCustomTag = { tag -> LogManager.removeCustomTag(requireContext(), tag); refresh() },
+                            onManualTextFilterChanged = { text -> LogManager.setManualTextFilter(text) }, // no persistence, no refreshState needed
+                            allLogTagOptions = remember { LogManager.getAllKnownTags() },
                             onWineDebugChanged = { checked ->
                                 preferences.edit { putBoolean("enable_wine_debug", checked) }
                                 com.winlator.cmod.runtime.system.LogManager
@@ -194,6 +218,13 @@ class DebugFragment : Fragment() {
         debugState =
             DebugState(
                 appDebug = preferences.getBoolean("enable_app_debug", false),
+                exitReasonLog = preferences.getBoolean("enable_exit_reason_log", false),
+                crashLog = preferences.getBoolean("enable_crash_log", false),
+                eventWatchLog = preferences.getBoolean("enable_event_watch_log", false),
+                tagFilterMode = LogManager.getTagFilterMode(),
+                selectedTags = LogManager.getSelectedTags().toList(),
+                customTags = LogManager.getAllKnownTags().filterNot { it in GeneratedLogTags.TAGS },
+
                 wineDebug = preferences.getBoolean("enable_wine_debug", false),
                 wineChannels = channels,
                 box64Logs = preferences.getBoolean("enable_box64_logs", false),

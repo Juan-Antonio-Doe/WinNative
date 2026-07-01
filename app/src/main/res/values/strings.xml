@@ -1059,6 +1059,21 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <!-- Settings > Debug -->
     <string name="settings_debug_wine_debug_channel">Wine Debug Channel</string>
     <string name="settings_debug_title">Debug</string>
+    <string name="settings_debug_exit_reason_log_title">Exit reason log</string>
+    <string name="settings_debug_exit_reason_log_subtitle">Record why the app process last terminated</string>
+    <string name="settings_debug_crash_log_title">Crash log</string>
+    <string name="settings_debug_crash_log_subtitle">Save native crash tombstone traces</string>
+    <string name="settings_debug_event_watch_log_title">Event watch log</string>
+    <string name="settings_debug_event_watch_log_subtitle">Capture a focused system log around pause/resume events</string>
+    <string name="settings_debug_log_tag_filter_channel">Log tag filter</string>
+    <string name="settings_debug_tags_selected_suffix">tags selected</string>
+    <string name="settings_debug_manual_text_filter_hint">Filter log lines by text…</string>
+    <string name="settings_debug_tag_filter_mode">Mode</string>
+    <string name="settings_debug_tag_filter_all">All</string>
+    <string name="settings_debug_tag_filter_include">Include</string>
+    <string name="settings_debug_tag_filter_exclude">Exclude</string>
+    <string name="settings_debug_add_custom_tag_hint">Add custom tag…</string>
+    <string name="settings_debug_no_tags_selected">No tags selected</string>
     <string name="settings_debug_wine_logs_title">Enable Wine Debug Logs</string>
     <string name="settings_debug_wine_logs_subtitle">Write Wine debug output to file</string>
     <string name="settings_debug_box_logs_title">Enable Box86/64 Logs</string>

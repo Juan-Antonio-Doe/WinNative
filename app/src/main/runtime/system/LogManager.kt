@@ -21,17 +21,34 @@ import java.util.Locale
 
 object LogManager {
     private const val TAG = "LogManager"
-    private const val LOG_FILE = "app_debug.log"
+    private const val APP_LOG_FILE = "app_debug.log"
+    private const val EXIT_REASONS_FILE = "exit_reasons.log"
+    private const val CRASH_FILE = "crash.log"
 
     private var logcatProcess: Process? = null
     private var appLogProcess: Process? = null
-    private var pauseWatchProcess: Process? = null
+    private var eventWatchProcess: Process? = null
 
     private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
-    enum class Level(val prefix: String) {
-        DEBUG("D"), INFO("I"), WARN("W"), ERROR("E")
-    }
+    enum class Level(val prefix: String) { DEBUG("D"), INFO("I"), WARN("W"), ERROR("E") }
+
+    enum class TagFilterMode { ALL, INCLUDE, EXCLUDE }
+
+    // Fixed diagnostic baseline always present in an event-watch capture,
+    // independent of the app-tag filter — these are system components, not
+    // app classes, so they don't belong in the same selectable list.
+    private val BASELINE_SYSTEM_TAGS = listOf(
+        "ActivityManager:I", "lmkd:I", "OomAdjuster:I", "ActivityTaskManager:I", "Process:I",
+    )
+
+    private const val PREF_ENABLE_APP_DEBUG = "enable_app_debug"
+    private const val PREF_ENABLE_EXIT_REASON_LOG = "enable_exit_reason_log"
+    private const val PREF_ENABLE_CRASH_LOG = "enable_crash_log"
+    private const val PREF_ENABLE_EVENT_WATCH_LOG = "enable_event_watch_log"
+    private const val PREF_TAG_FILTER_MODE = "log_tag_filter_mode"
+    private const val PREF_SELECTED_TAGS = "app_debug_tags"
+    private const val PREF_CUSTOM_TAGS = "app_debug_custom_tags"
 
     // ── Cached state ──────────────────────────────────────────────────
     //
@@ -41,22 +58,34 @@ object LogManager {
     // call costs one volatile-field read, not a disk lookup.
 
     @Volatile private var appContext: Context? = null
-    @Volatile var isDebugEnabledCached = false
+    @Volatile
+    var cachedAppDebugEnabled = false
+    @Volatile private var cachedExitReasonLogEnabled = false
+    @Volatile private var cachedCrashLogEnabled = false
+    @Volatile private var cachedEventWatchEnabled = false
+    @Volatile private var cachedTagFilterMode = TagFilterMode.ALL
+    @Volatile private var cachedSelectedTags: Set<String> = emptySet()
+    @Volatile private var cachedCustomTags: Set<String> = emptySet()
     @Volatile private var cachedLogsDir: File? = null
-    @Volatile private var cachedAllowedTags: Set<String> = emptySet()
-    @Volatile private var cachedTextFilters: List<String> = emptyList()
+
+    @Volatile private var manualTextFilter: String? = null
 
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
+    private val RELEVANT_KEYS = setOf(
+        PREF_ENABLE_APP_DEBUG, PREF_ENABLE_EXIT_REASON_LOG, PREF_ENABLE_CRASH_LOG,
+        PREF_ENABLE_EVENT_WATCH_LOG, PREF_TAG_FILTER_MODE, PREF_SELECTED_TAGS,
+        PREF_CUSTOM_TAGS, "winlator_path_uri",
+    )
+
     /** Cheap, public, and the recommended guard for any genuinely expensive log message. */
     @JvmStatic
-    val isDebugEnabled: Boolean
-        get() = isDebugEnabledCached
+    val isDebugEnabled: Boolean get() = cachedAppDebugEnabled
 
     private fun resolveContext(context: Context?): Context? = context?.applicationContext ?: appContext
 
     /**
-     * Call once, ideally from PluviaApp.onCreate(), so every later call
+     * Call once, ideally from UnifiedActivity.onCreate(), so every later call
      * site — including ones with no Context of their own — has a fallback,
      * and so the debug/path-dependent caches above are primed before
      * anything tries to log.
@@ -64,6 +93,19 @@ object LogManager {
     @JvmStatic
     fun init(context: Context) {
         val app = context.applicationContext
+        appContext = app
+        refreshCaches(app)
+
+        if (prefsListener == null) {
+            val prefs = PreferenceManager.getDefaultSharedPreferences(app)
+            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+                if (key in RELEVANT_KEYS) refreshCaches(app)
+            }
+            prefs.registerOnSharedPreferenceChangeListener(listener)
+            prefsListener = listener
+        }
+
+        /*val app = context.applicationContext
         appContext = app
         refreshCaches(app)
 
@@ -94,20 +136,27 @@ object LogManager {
         // Capture previous exit reasons
         if (isDebugEnabledCached && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             logLastExitReasons(app)
-        }
+        }*/
     }
 
     private fun refreshCaches(context: Context) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        isDebugEnabledCached = prefs.getBoolean("enable_app_debug", false)
+        cachedAppDebugEnabled = prefs.getBoolean(PREF_ENABLE_APP_DEBUG, false)
+        cachedExitReasonLogEnabled = prefs.getBoolean(PREF_ENABLE_EXIT_REASON_LOG, false)
+        cachedCrashLogEnabled = prefs.getBoolean(PREF_ENABLE_CRASH_LOG, false)
+        cachedEventWatchEnabled = prefs.getBoolean(PREF_ENABLE_EVENT_WATCH_LOG, false)
+        cachedTagFilterMode = runCatching {
+            TagFilterMode.valueOf(prefs.getString(PREF_TAG_FILTER_MODE, null) ?: TagFilterMode.ALL.name)
+        }.getOrDefault(TagFilterMode.ALL)
+        cachedSelectedTags = splitPref(prefs, PREF_SELECTED_TAGS)
+        cachedCustomTags = splitPref(prefs, PREF_CUSTOM_TAGS)
         cachedLogsDir = resolveLogsDir(context, prefs)
-        cachedAllowedTags = prefs.getString("app_debug_tags", null)
+    }
+
+    private fun splitPref(prefs: SharedPreferences, key: String): Set<String> =
+        prefs.getString(key, null)
             ?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }?.toSet()
             ?: emptySet()
-        cachedTextFilters = prefs.getString("app_debug_text_filter", null)
-            ?.split(",")?.map { it.trim() }?.filter { it.isNotEmpty() }
-            ?: emptyList()
-    }
 
     // ── Logs directory ───────────────────────────────────────────────
 
@@ -147,22 +196,25 @@ object LogManager {
     }
 
     private fun resolveLogsDir(context: Context, prefs: SharedPreferences): File {
-        val pathString = resolvePathString(prefs.getString("winlator_path_uri", null), context)
-        val dir = File(pathString, "logs")
+        val currentPath = resolvePathString(
+            prefs.getString("winlator_path_uri", null), SettingsConfig.DEFAULT_WINLATOR_PATH, context,
+        )
 
-        Timber.d("Winnative pathString: $pathString")
+        Timber.d("Winnative pathString: $currentPath")
 
+        val dir = File(currentPath, "logs")
         if (!dir.exists()) dir.mkdirs()
         return dir
     }
 
-    private fun resolvePathString(uriStr: String?, context: Context): String {
-        if (uriStr.isNullOrEmpty()) return SettingsConfig.DEFAULT_WINLATOR_PATH
+    private fun resolvePathString(uriStr: String?, fallback: String, ctx: Context): String {
+        if (uriStr.isNullOrEmpty()) return fallback
         return try {
-            FileUtils.getFilePathFromUri(context, Uri.parse(uriStr)) ?: SettingsConfig.DEFAULT_WINLATOR_PATH
+            val uri = Uri.parse(uriStr)
+            FileUtils.getFilePathFromUri(ctx, uri) ?: uriStr
         } catch (e: Exception) {
             Timber.tag(TAG).w("Failed to resolve winlator_path_uri ($uriStr): ${e.message}")
-            SettingsConfig.DEFAULT_WINLATOR_PATH
+            uriStr
         }
     }
 
@@ -174,7 +226,7 @@ object LogManager {
                 prefs.getBoolean("enable_steam_logs", false) ||
                 prefs.getBoolean("enable_input_logs", false) ||
                 prefs.getBoolean("enable_download_logs", false) ||
-                isDebugEnabledCached
+                cachedAppDebugEnabled
     }
 
     fun updateLoggingState(context: Context) {
@@ -197,6 +249,69 @@ object LogManager {
         val logsDir = getLogsDir(context)
         logsDir.listFiles()?.filter { it.name.endsWith(".old.log") }?.forEach { it.delete() }
         logsDir.listFiles()?.filter { it.name.endsWith(".log") }?.forEach { it.delete() }
+    }
+
+    // ── Tag management (settings UI surface) ──────────────────────────
+
+    /** Union of build-time-discovered tags and user-added custom ones, sorted for display. */
+    @JvmStatic
+    fun getAllKnownTags(): List<String> =
+        (GeneratedLogTags.TAGS + cachedCustomTags).distinct().sorted()
+
+    @JvmStatic
+    fun addCustomTag(context: Context, tag: String) {
+        val cleaned = tag.trim()
+        if (cleaned.isEmpty()) return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val updated = cachedCustomTags + cleaned
+        prefs.edit().putString(PREF_CUSTOM_TAGS, updated.joinToString(",")).apply()
+    }
+
+    @JvmStatic
+    fun removeCustomTag(context: Context, tag: String) {
+        val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+        val updatedCustomTags = cachedCustomTags - tag
+        val updatedSelectedTags = cachedSelectedTags - tag // deselect too — a removed tag can't stay selected
+        prefs.edit()
+            .putString(PREF_CUSTOM_TAGS, updatedCustomTags.joinToString(","))
+            .putString(PREF_SELECTED_TAGS, updatedSelectedTags.joinToString(","))
+            .apply()
+    }
+
+    @JvmStatic
+    fun setSelectedTags(context: Context, tags: Set<String>) {
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putString(PREF_SELECTED_TAGS, tags.joinToString(",")).apply()
+    }
+
+    @JvmStatic
+    fun getSelectedTags(): Set<String> = cachedSelectedTags
+
+    @JvmStatic
+    fun setTagFilterMode(context: Context, mode: TagFilterMode) {
+        PreferenceManager.getDefaultSharedPreferences(context).edit()
+            .putString(PREF_TAG_FILTER_MODE, mode.name).apply()
+    }
+
+    @JvmStatic
+    fun getTagFilterMode(): TagFilterMode = cachedTagFilterMode
+
+    /** Transient only — never written to SharedPreferences. Pass null/blank to clear. */
+    @JvmStatic
+    fun setManualTextFilter(text: String?) {
+        manualTextFilter = text?.trim()?.takeIf { it.isNotEmpty() }
+    }
+
+    @JvmStatic
+    fun getManualTextFilter(): String = manualTextFilter ?: ""
+
+    @JvmStatic
+    fun clearManualTextFilter() = setManualTextFilter(null)
+
+    private fun passesTagFilter(tag: String): Boolean = when (cachedTagFilterMode) {
+        TagFilterMode.ALL -> true
+        TagFilterMode.INCLUDE -> tag in cachedSelectedTags
+        TagFilterMode.EXCLUDE -> tag !in cachedSelectedTags
     }
 
     // ── Wine/Box64 Logcat Capture ────────────────────────────────────
@@ -242,7 +357,7 @@ object LogManager {
 
     @JvmStatic
     fun startAppLogging(context: Context) {
-        if (!isDebugEnabledCached) return
+        if (!cachedAppDebugEnabled) return
         val logFile = File(getLogsDir(context), "application.log")
 
         try {
@@ -351,22 +466,22 @@ object LogManager {
      * instead.
      */
     inline fun log(tag: String, context: Context? = null, message: () -> String) {
-        if (!isDebugEnabledCached) return
+        if (!cachedAppDebugEnabled) return
         baseLog(Level.DEBUG, tag, message(), null, context)
     }
 
     inline fun logI(tag: String, context: Context? = null, message: () -> String) {
-        if (!isDebugEnabledCached) return
+        if (!cachedAppDebugEnabled) return
         baseLog(Level.INFO, tag, message(), null, context)
     }
 
     inline fun logW(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
-        if (!isDebugEnabledCached) return
+        if (!cachedAppDebugEnabled) return
         baseLog(Level.WARN, tag, message(), null, context)
     }
 
     inline fun logE(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
-        if (!isDebugEnabledCached) return
+        if (!cachedAppDebugEnabled) return
         baseLog(Level.ERROR, tag, message(), null, context)
     }
 
@@ -379,21 +494,20 @@ object LogManager {
             Level.ERROR -> if (t != null) Timber.tag(tag).e(t, message) else Timber.tag(tag).e(message)
         }
 
-        if (!isDebugEnabledCached) return
-        if (cachedAllowedTags.isNotEmpty() && tag !in cachedAllowedTags) return
-        if (cachedTextFilters.isNotEmpty() && cachedTextFilters.none { message.contains(it, ignoreCase = true) }) return
+        if (!cachedAppDebugEnabled) return
+        if (!passesTagFilter(tag)) return
+        manualTextFilter?.let { if (!message.contains(it, ignoreCase = true)) return }
 
         val ctx = resolveContext(context) ?: return
         val fullMessage = if (t != null) "$message :: ${Log.getStackTraceString(t)}" else message
-        appendLine(ctx, LOG_FILE, "${level.prefix}/$tag", fullMessage)
+        appendLine(ctx, APP_LOG_FILE, "${level.prefix}/$tag", fullMessage)
     }
 
     private fun appendLine(context: Context, fileName: String, level: String, message: String) {
         try {
-            val file = File(getLogsDir(context), fileName)
-            file.appendText("${timestampFormat.format(Date())} $level: $message\n")
+            File(getLogsDir(context), fileName).appendText("${timestampFormat.format(Date())} $level: $message\n")
         } catch (e: Exception) {
-            Timber.e("Failed to append to $fileName: ${e.message}")
+            Timber.tag(TAG).e("Failed to append to $fileName: ${e.message}")
         }
     }
 
@@ -409,8 +523,8 @@ object LogManager {
     // <reason>" messages, which is the signal of the OS killing a process.
 
     @JvmStatic
-    fun startPauseWatch(context: Context) {
-        if (!isDebugEnabledCached) return
+    fun startEventWatch(context: Context, label: String = "watcher") {
+        if (!cachedEventWatchEnabled) return
 
         // Verify READ_LOGS permission at runtime
         if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_LOGS)
@@ -418,41 +532,74 @@ object LogManager {
             logW(TAG, null, context) { "READ_LOGS permission not granted, pause watch may not capture system logs" }
         }
 
-        stopPauseWatch()
+        stopEventWatch()
         try {
             // Wipe the historical buffer so this file only contains lines from
             // this pause window onward — not hours of unrelated backlog.
             Runtime.getRuntime().exec(arrayOf("logcat", "-c")).waitFor()
 
+            val safeLabel = label.ifBlank { "manual" }.replace(Regex("[^A-Za-z0-9_-]"), "_")
             val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-            val file = File(getLogsDir(context), "pause_$stamp.log")
-            appendLine(context, file.name, "I/$TAG", "=== pause window started ===")
-            pauseWatchProcess = Runtime.getRuntime().exec(
+            val file = File(getLogsDir(context), "event_${safeLabel}_$stamp.log")
+            appendLine(context, file.name, "I/$TAG", "=== event watch started ($safeLabel) ===")
+
+            val command = mutableListOf("logcat", "-v", "threadtime", "-f", file.absolutePath)
+            command.addAll(buildLogcatFilterSpecArgs())
+            manualTextFilter?.let {
+                command.add("-e")
+                command.add(it)
+            }
+
+            // New with custom logcat filter
+            eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
+
+            // Old, with hardcoded filter
+            /*eventWatchProcess = Runtime.getRuntime().exec(
                 arrayOf(
                     "logcat", "-v", "threadtime", "-f", file.absolutePath,
-                    "ActivityManager:I", "lmkd:I", "OomAdjuster:I", "ActivityTaskManager:I", "Process:I",
-//                    "*:S",    // Silence
-                    "*:D",      // Debug [Note: This filter drastically increases the chances that the container will close upon returning to it]
+//                    "ActivityManager:I", "lmkd:I", "OomAdjuster:I", "ActivityTaskManager:I", "Process:I",  // For tracking OS killer.
+                    // For tracking the annoying container-resume shut down bug.
+                    "ActivityManager:I", "Process:I", "XConnectorEpoll:D", "ClientSocket:D", "XClientConnectionHandler:D", "Surface:I", "VkRenderer:I",
+                    "*:S",    // Silence
+//                    "*:D",      // Debug [Note: This filter drastically increases the chances that the container will close upon returning to it]
                 ),
-            )
-            closeProcessStdin(pauseWatchProcess)
+            )*/
+
+            closeProcessStdin(eventWatchProcess)
         } catch (e: Exception) {
-//            Timber.e("Failed to start pause watch: ${e.message}")
-            logE(TAG, null, context) { "Failed to start pause watch: ${e.message}" }
+//            Timber.tag(TAG).e("Failed to start event watch: ${e.message}")
+            logE(TAG, null, context) { "Failed to start event watch: ${e.message}" }
         }
     }
 
     @JvmStatic
-    fun stopPauseWatch() {
+    fun stopEventWatch() {
         try {
-            pauseWatchProcess?.let(::destroyProcess)
-            pauseWatchProcess = null
+            eventWatchProcess?.let(::destroyProcess)
+            eventWatchProcess = null
         } catch (e: Exception) {
             Timber.e("Failed to stop pause watch: ${e.message}")
         }
     }
 
-    // ── 3. Why was the process last killed? ──────────────────────────
+    private fun buildLogcatFilterSpecArgs(): List<String> {
+        val spec = mutableListOf<String>()
+        spec.addAll(BASELINE_SYSTEM_TAGS)
+        when (cachedTagFilterMode) {
+            TagFilterMode.ALL -> spec.add("*:D")
+            TagFilterMode.EXCLUDE -> {
+                spec.add("*:D")
+                cachedSelectedTags.forEach { spec.add("$it:S") }
+            }
+            TagFilterMode.INCLUDE -> {
+                cachedSelectedTags.forEach { spec.add("$it:D") }
+                spec.add("*:S")
+            }
+        }
+        return spec
+    }
+
+    // ── 3. Exit/killed reasons | crash trace ──────────────────────────
     //
     // No special permission needed (API 30+). Call once, early, on
     // every app start — it tells you, after the fact, exactly what
@@ -462,40 +609,52 @@ object LogManager {
 
     @JvmStatic @JvmOverloads
     fun logLastExitReasons(context: Context? = null) {
-        if (!isDebugEnabledCached) return
+        if (!cachedExitReasonLogEnabled && !cachedCrashLogEnabled) return
         val ctx = resolveContext(context) ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val maxExitReasons = 5
+
 
         try {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-            val infos: List<ApplicationExitInfo> =
-                am.getHistoricalProcessExitReasons(ctx.packageName, 0, 5)
+            val infos: List<ApplicationExitInfo> = am.getHistoricalProcessExitReasons(ctx.packageName, 0, maxExitReasons)
             if (infos.isEmpty()) {
-                appendLine(ctx, "exit_reasons.log", "I/$TAG", "No historical exit info available")
+                appendLine(ctx, EXIT_REASONS_FILE, "I/$TAG", "No historical exit info available")
                 return
             }
-            for (info in infos) {
-                appendLine(
-                    ctx, "exit_reasons.log", "I/$TAG",
-                    "pid=${info.pid} reason=${info.reason} importance=${info.importance} " +
-                            "desc=${info.description} timestamp=${Date(info.timestamp)}",
-                )
-                if (info.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
+            for ((index, info) in infos.withIndex()) {
+                if (cachedExitReasonLogEnabled) {
+                    // Separator line with reason number: 0 = newest/last, larger = older
+                    appendLine(
+                        ctx, EXIT_REASONS_FILE, "I/$TAG",
+                        "---- Exit reason #${index} (0=new/last, ${maxExitReasons}=oldest) ----"
+                    )
+
+                    appendLine(
+                        ctx, EXIT_REASONS_FILE, "I/$TAG",
+                        "pid=${info.pid} reason=${info.reason} importance=${info.importance} " +
+                                "desc=${info.description} timestamp=${Date(info.timestamp)}",
+                    )
+                }
+                if (cachedCrashLogEnabled && info.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
                     try {
                         info.traceInputStream?.use { input ->
-                            appendLine(ctx, "exit_reasons.log", "I/$TAG", "Tombstone Data:\n${input.bufferedReader().readText()}")
+                            appendLine(
+                                ctx, CRASH_FILE, "I/$TAG",
+                                "Tombstone pid=${info.pid} timestamp=${Date(info.timestamp)}:\n${input.bufferedReader().readText()}",
+                            )
                         }
                     } catch (e: Exception) {
-                        Timber.e("Failed to read tombstone trace: ${e.message}")
+                        Timber.tag(TAG).e("Failed to read tombstone trace: ${e.message}")
                     }
                 }
             }
         } catch (e: Exception) {
-            Timber.e("Failed to read exit reasons: ${e.message}")
+            Timber.tag(TAG).e("Failed to read exit reasons: ${e.message}")
         }
     }
 
-    @JvmStatic
+    /*@JvmStatic
     fun logCrash(context: Context, thread: Thread, throwable: Throwable) {
         try {
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
@@ -518,5 +677,5 @@ object LogManager {
         } catch (e: Exception) {
             Timber.e(e, "Failed to log crash")
         }
-    }
+    }*/
 }
