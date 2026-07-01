@@ -2,6 +2,9 @@ package com.winlator.cmod.runtime.display.connector;
 
 import android.util.SparseArray;
 import androidx.annotation.Keep;
+
+import com.winlator.cmod.runtime.system.LogManager;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 
@@ -18,6 +21,8 @@ public class XConnectorEpoll implements Runnable {
   private int initialInputBufferCapacity = 4096;
   private int initialOutputBufferCapacity = 4096;
   private final SparseArray<Client> connectedClients = new SparseArray<>();
+
+  private String TAG = "XConnectorEpoll";
 
   static {
     System.loadLibrary("winlator");
@@ -123,10 +128,10 @@ public class XConnectorEpoll implements Runnable {
           while (running && requestHandler.handleRequest(client))
             activePosition = inputStream.getActivePosition();
           inputStream.setActivePosition(activePosition);
-        } else killConnection(client);
+        } else killConnection(client, "EOF on read"); // handleExistingConnection's readMoreData()<=0 branch
       } else requestHandler.handleRequest(client);
     } catch (IOException e) {
-      killConnection(client);
+      killConnection(client, "IOException: " + e);
     }
   }
 
@@ -136,7 +141,17 @@ public class XConnectorEpoll implements Runnable {
     }
   }
 
-  public void killConnection(Client client) {
+  public void killConnection(Client client, String reason) {
+    if (client == null) {
+      LogManager.logW(TAG, "killConnection called with null client; reason=" + reason);
+      return;
+    }
+
+    // Log immediately on entry: fd, reason, whether multithreadedClients
+    int fd = client.clientSocket != null ? client.clientSocket.fd : -1;
+    LogManager.logI(TAG,
+            "killConnection entry: fd=" + fd + " reason=\"" + reason + "\" multithreadedClients=" + multithreadedClients);
+
     if (!client.markKillingOnce()) return; // already being/been torn down by another thread
     client.connected = false;
     connectionHandler.handleConnectionShutdown(client);
@@ -148,6 +163,11 @@ public class XConnectorEpoll implements Runnable {
           try {
             client.pollThread.join();
           } catch (InterruptedException e) {
+            // Restore interrupt status and log interruption
+            Thread.currentThread().interrupt();
+            LogManager.logW(TAG,
+                    "Interrupted while joining pollThread for fd=" + fd + " reason=\"" + reason + "\"");
+            break;
           }
         }
 
@@ -156,12 +176,27 @@ public class XConnectorEpoll implements Runnable {
       closeFd(client.shutdownFd);
     } else removeFdFromEpoll(epollFd, client.clientSocket.fd);
     // Free direct byte buffers and ancillary FDs to avoid resource leak warnings
-    client.releaseIOStreams();
-    client.clientSocket.closeAncillaryFds();
+    try {
+      client.releaseIOStreams();
+    } catch (Exception e) {
+      LogManager.logW(TAG,
+              "Exception releasing IO streams for fd=" + fd + " reason=\"" + reason + "\"",
+              e);
+    }
+    try {
+      client.clientSocket.closeAncillaryFds();
+    } catch (Exception e) {
+      LogManager.logW(TAG,
+              "Exception closing ancillary FDs for fd=" + fd + " reason=\"" + reason + "\"",
+              e);
+    }
     closeFd(client.clientSocket.fd);
     synchronized (connectedClients) {
       connectedClients.remove(client.clientSocket.fd);
     }
+
+    LogManager.log(TAG,
+            "killConnection completed: fd=" + fd + " reason=\"" + reason + "\"");
   }
 
   private void shutdown() {
@@ -171,7 +206,7 @@ public class XConnectorEpoll implements Runnable {
         if (connectedClients.size() == 0) break;
         client = connectedClients.valueAt(connectedClients.size() - 1);
       }
-      killConnection(client);
+      killConnection(client, "connector shutdown");
     }
 
     removeFdFromEpoll(epollFd, serverFd);

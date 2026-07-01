@@ -23,6 +23,7 @@ import com.winlator.cmod.runtime.display.xserver.WindowAttributes;
 import com.winlator.cmod.runtime.display.xserver.WindowManager;
 import com.winlator.cmod.runtime.display.xserver.XLock;
 import com.winlator.cmod.runtime.display.xserver.XServer;
+import com.winlator.cmod.runtime.system.LogManager;
 import com.winlator.cmod.shared.math.Mathf;
 import com.winlator.cmod.shared.math.XForm;
 import java.nio.ByteBuffer;
@@ -216,9 +217,12 @@ public class VulkanRenderer
                 destroyed.set(false);
                 xServer.windowManager.addOnWindowModificationListener(this);
                 xServer.pointer.addOnPointerMotionListener(this);
+                LogManager.log(TAG, "attachSurface: nativeHandle == 0: true");
             }
             nativeSurfaceCreated(nativeHandle, surface);
+            LogManager.log(TAG, "attachSurface: inside [synchronized (this)]");
         }
+        LogManager.log(TAG, "attachSurface called");
     }
 
     private boolean shouldEnableValidationLayers() {
@@ -240,8 +244,10 @@ public class VulkanRenderer
     public void detachSurface() {
         // Same monitor as destroy()/attachSurface; re-check the handle under the lock.
         synchronized (this) {
+            LogManager.log(TAG, "detachSurface: nativeHandle != 0: " + (nativeHandle != 0));
             if (nativeHandle != 0) nativeSurfaceDestroyed(nativeHandle);
         }
+        LogManager.log(TAG, "detachSurface called");
     }
 
     /** Start mirroring the composited output into {@code encoderSurface}; false if the native setup failed. */
@@ -289,6 +295,7 @@ public class VulkanRenderer
     @Override
     public void onSurfaceCreated() {
         // Surface is already attached in attachSurface(). Nothing else to do here.
+        LogManager.log(TAG, "onSurfaceCreated called");
     }
 
     @Override
@@ -298,10 +305,12 @@ public class VulkanRenderer
         viewTransformation.update(width, height,
                 xServer.screenInfo.width, xServer.screenInfo.height);
         viewportNeedsUpdate = true;
+        LogManager.log(TAG, "onSurfaceChanged called: " + width + "x" + height);
     }
 
     @Override
     public void onSurfaceDestroyed() {
+        LogManager.log(TAG, "onSurfaceDestroyed called");
         destroy();
     }
 

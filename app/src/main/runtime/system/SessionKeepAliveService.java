@@ -430,7 +430,6 @@ public class SessionKeepAliveService extends Service {
         // stopProtectionHeartbeat();
         stopForegroundCompat();
         stopSelf();
-        super.onTimeout(startId, fstype);
     }
 
     private static void sendCommand(Context ctx, String action, @Nullable String tag) {

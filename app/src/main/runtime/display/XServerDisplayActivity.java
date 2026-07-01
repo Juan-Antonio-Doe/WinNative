@@ -174,6 +174,7 @@ import java.util.HashMap;
 import java.util.Locale;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.concurrent.CountDownLatch;
@@ -447,6 +448,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private boolean isDarkMode;
     private boolean enableLogsMenu;
     private static final String TAG = "XServerDisplayActivity";
+    private static final AtomicLong breadcrumbCounter = new AtomicLong(0);
 
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;
@@ -2319,8 +2321,63 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         boolean cleaningUp = exitRequested.get() || sessionCleanupStarted.get() || activityDestroyed.get();
 
         if (!cleaningUp && environment != null) {
-            xServerView.onResume();
-            environment.onResume();
+            /*xServerView.onResume();
+            environment.onResume();*/
+            long breadcrumbId = breadcrumbCounter.incrementAndGet();
+
+            // xServerView.onResume() breadcrumb before
+            long tBeforeSurfaceNano = System.nanoTime();
+            long tBeforeSurfaceMs = System.currentTimeMillis();
+            LogManager.logI(TAG,
+                    "breadcrumbId=" + breadcrumbId + " surface resume starts before xServerView.onResume"
+                            + " tsNano=" + tBeforeSurfaceNano + " tsMs=" + tBeforeSurfaceMs
+                            + " thread=" + Thread.currentThread().getName(),
+                    this);
+
+            try {
+                xServerView.onResume();
+            } catch (Throwable t) {
+                LogManager.logW(TAG,
+                        "breadcrumbId=" + breadcrumbId + " exception during xServerView.onResume",
+                        t, this);
+                throw t;
+            }
+
+            long tAfterSurfaceNano = System.nanoTime();
+            long tAfterSurfaceMs = System.currentTimeMillis();
+            LogManager.logI(TAG,
+                    "breadcrumbId=" + breadcrumbId + " surface resume completed after xServerView.onResume"
+                            + " tsNano=" + tAfterSurfaceNano + " tsMs=" + tAfterSurfaceMs
+                            + " elapsedNs=" + (tAfterSurfaceNano - tBeforeSurfaceNano)
+                            + " thread=" + Thread.currentThread().getName(),
+                    this);
+
+            // environment.onResume() breadcrumb before
+            long tBeforeEnvNano = System.nanoTime();
+            long tBeforeEnvMs = System.currentTimeMillis();
+            LogManager.logI(TAG,
+                    "breadcrumbId=" + breadcrumbId + " environment resume starts before environment.onResume"
+                            + " tsNano=" + tBeforeEnvNano + " tsMs=" + tBeforeEnvMs
+                            + " thread=" + Thread.currentThread().getName(),
+                    this);
+
+            try {
+                environment.onResume();
+            } catch (Throwable t) {
+                LogManager.logW(TAG,
+                        "breadcrumbId=" + breadcrumbId + " exception during environment.onResume",
+                        t, this);
+                throw t;
+            }
+
+            long tAfterEnvNano = System.nanoTime();
+            long tAfterEnvMs = System.currentTimeMillis();
+            LogManager.logI(TAG,
+                    "breadcrumbId=" + breadcrumbId + " environment resume completed after environment.onResume"
+                            + " tsNano=" + tAfterEnvNano + " tsMs=" + tAfterEnvMs
+                            + " elapsedNs=" + (tAfterEnvNano - tBeforeEnvNano)
+                            + " thread=" + Thread.currentThread().getName(),
+                    this);
         }
 
         if (inputControlsView != null && touchpadView != null) {
@@ -2347,12 +2404,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         SessionKeepAliveService.onResumeSession(this);
 
         LogManager.log(TAG, "Session resumed", getApplicationContext());
-        handler.postDelayed(LogManager::stopPauseWatch, 5000);
+        handler.postDelayed(LogManager::stopEventWatch, 5000);
     }
 
     @Override
     public void onPause() {
-        LogManager.startPauseWatch(getApplicationContext());
+        LogManager.startEventWatch(getApplicationContext(), "onPause");
         LogManager.log(TAG, "Session paused; entering background", getApplicationContext());
         SessionKeepAliveService.onPauseSession(this);
 
@@ -3729,7 +3786,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         if (exitRequested.get()) {
             SessionKeepAliveService.stopSession(this);
         }
-        LogManager.stopPauseWatch();
+        LogManager.stopEventWatch();
 
         super.onDestroy();
         if (!switchLaunchInProgress.get()) {
@@ -6368,6 +6425,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         return a != null && a.equals(b);
     }
 
+    // ToDo: Test this disabled as suspect of being related to container auto shut down.
     private void setupXEnvironment() throws PackageManager.NameNotFoundException {
         if (SessionKeepAliveService.isSessionActive()) {
             XEnvironment existingEnv = SessionKeepAliveService.getActiveEnvironment();
