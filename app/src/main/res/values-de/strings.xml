@@ -1454,6 +1454,23 @@ Installierter Pfad:
     <string name="session_task_custom_value">Benutzerdefinierter Wert</string>
     <string name="session_gyroscope_orientation_mode">Zum Zielen neigen (Ausrichtung)</string>
 
+    <!-- Settings > Debug -->
+    <string name="settings_debug_exit_reason_log_title">Grund-für-Beendigung-Protokoll</string>
+    <string name="settings_debug_exit_reason_log_subtitle">Erfasst, warum der App-Prozess beendet wurde</string>
+    <string name="settings_debug_crash_log_title">Absturzprotokoll</string>
+    <string name="settings_debug_crash_log_subtitle">Native Crash-Tombstone-Spuren speichern</string>
+    <string name="settings_debug_event_watch_log_title">Ereignisüberwachungsprotokoll</string>
+    <string name="settings_debug_event_watch_log_subtitle">Fokussiertes Systemprotokoll um Pause/Fortsetzen-Ereignisse erfassen</string>
+    <string name="settings_debug_log_tag_filter_channel">Protokoll-Tag-Filter</string>
+    <string name="settings_debug_tags_selected_suffix">Tags ausgewählt</string>
+    <string name="settings_debug_manual_text_filter_hint">Protokollzeilen nach Text filtern…</string>
+    <string name="settings_debug_tag_filter_mode">Modus</string>
+    <string name="settings_debug_tag_filter_all">Alle</string>
+    <string name="settings_debug_tag_filter_include">Einschließen</string>
+    <string name="settings_debug_tag_filter_exclude">Ausschließen</string>
+    <string name="settings_debug_add_custom_tag_hint">Benutzerdefinierten Tag hinzufügen…</string>
+    <string name="settings_debug_no_tags_selected">Keine Tags ausgewählt</string>
+
     <!-- File manager -->
     <string name="file_manager_title">Dateien</string>
     <string name="file_manager_copy">Kopieren</string>

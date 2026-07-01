@@ -1453,6 +1453,24 @@ Chemin installé :
     <string name="session_task_bring_to_front">Mettre au premier plan</string>
     <string name="session_task_custom_value">Valeur personnalisée</string>
     <string name="session_gyroscope_orientation_mode">Incliner pour viser (orientation)</string>
+
+    <!-- Settings > Debug -->
+    <string name="settings_debug_exit_reason_log_title">Journal des raisons de sortie</string>
+    <string name="settings_debug_exit_reason_log_subtitle">Enregistre pourquoi le processus de l\'application s\'est terminé</string>
+    <string name="settings_debug_crash_log_title">Journal des plantages</string>
+    <string name="settings_debug_crash_log_subtitle">Enregistrer les traces de tombstones de plantages natifs</string>
+    <string name="settings_debug_event_watch_log_title">Journal de suivi des événements</string>
+    <string name="settings_debug_event_watch_log_subtitle">Capturer un journal système centré autour des événements de pause/reprise</string>
+    <string name="settings_debug_log_tag_filter_channel">Filtre d\'étiquettes de journal</string>
+    <string name="settings_debug_tags_selected_suffix">étiquettes sélectionnées</string>
+    <string name="settings_debug_manual_text_filter_hint">Filtrer les lignes du journal par texte…</string>
+    <string name="settings_debug_tag_filter_mode">Mode</string>
+    <string name="settings_debug_tag_filter_all">Tous</string>
+    <string name="settings_debug_tag_filter_include">Inclure</string>
+    <string name="settings_debug_tag_filter_exclude">Exclure</string>
+    <string name="settings_debug_add_custom_tag_hint">Ajouter une étiquette personnalisée…</string>
+    <string name="settings_debug_no_tags_selected">Aucune étiquette sélectionnée</string>
+
     <!-- File manager -->
     <string name="file_manager_title">Fichiers</string>
     <string name="file_manager_copy">Copier</string>

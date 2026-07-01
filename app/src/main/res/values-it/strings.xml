@@ -1453,6 +1453,24 @@ Percorso installato:
     <string name="session_task_bring_to_front">Porta in primo piano</string>
     <string name="session_task_custom_value">Valore personalizzato</string>
     <string name="session_gyroscope_orientation_mode">Inclina per mirare (orientamento)</string>
+
+    <!-- Settings > Debug -->
+    <string name="settings_debug_exit_reason_log_title">Registro motivo uscita</string>
+    <string name="settings_debug_exit_reason_log_subtitle">Registra il motivo della terminazione del processo dell\'app</string>
+    <string name="settings_debug_crash_log_title">Registro errori</string>
+    <string name="settings_debug_crash_log_subtitle">Salva tracce tombstone di arresti anomali nativi</string>
+    <string name="settings_debug_event_watch_log_title">Registro monitoraggio eventi</string>
+    <string name="settings_debug_event_watch_log_subtitle">Cattura un registro di sistema focalizzato attorno agli eventi di pausa/ripresa</string>
+    <string name="settings_debug_log_tag_filter_channel">Filtro tag registro</string>
+    <string name="settings_debug_tags_selected_suffix">tag selezionati</string>
+    <string name="settings_debug_manual_text_filter_hint">Filtra righe registro per testo…</string>
+    <string name="settings_debug_tag_filter_mode">Modalità</string>
+    <string name="settings_debug_tag_filter_all">Tutti</string>
+    <string name="settings_debug_tag_filter_include">Includi</string>
+    <string name="settings_debug_tag_filter_exclude">Escludi</string>
+    <string name="settings_debug_add_custom_tag_hint">Aggiungi tag personalizzato…</string>
+    <string name="settings_debug_no_tags_selected">Nessun tag selezionato</string>
+
     <!-- File manager -->
     <string name="file_manager_title">File</string>
     <string name="file_manager_copy">Copia</string>
