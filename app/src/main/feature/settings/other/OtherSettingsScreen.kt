@@ -3,12 +3,18 @@
 /* Settings > Other screen — Jetpack Compose / Material3.
  * Uses a LazyColumn for the main content so the screen scrolls natively in Compose. */
 package com.winlator.cmod.feature.settings
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.Arrangement
@@ -32,12 +38,16 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Autorenew
+import androidx.compose.material.icons.outlined.BatteryAlert
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
+import androidx.compose.material.icons.outlined.KeyboardArrowUp
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Mouse
@@ -46,16 +56,20 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Speed
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -66,18 +80,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.winlator.cmod.R
+import com.winlator.cmod.runtime.system.ProcessHelper
 import com.winlator.cmod.shared.ui.dialog.PopupDialog
 import com.winlator.cmod.shared.ui.outlinedSwitchColors
 
@@ -92,6 +111,7 @@ private val TextPrimary = Color(0xFFF0F4FF)
 private val TextSecondary = Color(0xFF7A8FA8)
 private val SettingsSliderHeight = 24.dp
 private const val SettingsSliderTrackScaleY = 0.72f
+private val Warning = Color(0xFFFF4444)
 
 // State
 data class OtherSettingsState(
@@ -110,6 +130,10 @@ data class OtherSettingsState(
     val shareClipboard: Boolean = false,
     val recordPerformanceToFile: Boolean = false,
     val enableBackgroundSession: Boolean = false,
+    val enableAutoPause: Boolean = false,
+    val useBackgroundWakelock: Boolean = false,
+    val heartbeatFrequency: Int = 0,
+    val backgroundPauseMode: ProcessHelper.BackgroundPauseMode = ProcessHelper.BackgroundPauseMode.GAME_ONLY,
     val imagefsInstallProgress: Int? = null,
 )
 
@@ -153,6 +177,10 @@ fun OtherSettingsScreen(
     onShareClipboardChanged: (Boolean) -> Unit,
     onRecordPerformanceToFileChanged: (Boolean) -> Unit,
     onEnableBackgroundSessionChanged: (Boolean) -> Unit,
+    onEnableAutoPauseChanged: (Boolean) -> Unit,
+    onUseBackgroundWakelockChanged: (Boolean) -> Unit,
+    onHeartbeatFrequencyChanged: (Int) -> Unit,
+    onBackgroundPauseModeChanged: (ProcessHelper.BackgroundPauseMode) -> Unit,
     onRunSetupWizard: () -> Unit,
     onReinstallImagefs: () -> Unit,
 ) {
@@ -281,8 +309,8 @@ fun OtherSettingsScreen(
             )
         }
 
-        item(key = "integration_section") {
-            SectionLabel(stringResource(R.string.settings_other_section_integration), modifier = Modifier.padding(top = 8.dp))
+        item(key = "background_section") {
+            SectionLabel(stringResource(R.string.settings_other_section_background), modifier = Modifier.padding(top = 8.dp))
         }
 
         item(key = "background_session_card") {
@@ -293,6 +321,56 @@ fun OtherSettingsScreen(
                 checked = state.enableBackgroundSession,
                 onCheckedChange = onEnableBackgroundSessionChanged,
             )
+        }
+
+        item(key = "auto_pause_card") {
+            SettingsToggleCard(
+                title = stringResource(R.string.settings_other_bg_auto_pause_title),
+                subtitle = stringResource(R.string.settings_other_bg_auto_pause_subtitle),
+                icon = Icons.Outlined.Visibility,
+                checked = state.enableAutoPause,
+                onCheckedChange = onEnableAutoPauseChanged,
+            )
+        }
+
+        item(key = "background_wakelock_card") {
+            AnimatedVisibility(
+                visible = state.enableBackgroundSession,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                SettingsToggleCard(
+                    title = stringResource(R.string.settings_other_bg_wakelock_title),
+                    subtitle = stringResource(R.string.settings_other_bg_wakelock_subtitle),
+                    icon = Icons.Outlined.BatteryAlert,
+                    checked = state.useBackgroundWakelock,
+                    onCheckedChange = onUseBackgroundWakelockChanged,
+                )
+            }
+        }
+
+        item(key = "background_heartbeat_card") {
+            AnimatedVisibility(
+                visible = state.enableBackgroundSession && state.useBackgroundWakelock,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                HeartbeatFrequencyCard(
+                    currentFrequency = state.heartbeatFrequency,
+                    onFrequencyChanged = onHeartbeatFrequencyChanged,
+                )
+            }
+        }
+
+        item(key = "background_pause_mode_card") {
+            BackgroundPauseModeCard(
+                currentMode = state.backgroundPauseMode,
+                onModeChanged = onBackgroundPauseModeChanged,
+            )
+        }
+
+        item(key = "integration_section") {
+            SectionLabel(stringResource(R.string.settings_other_section_integration), modifier = Modifier.padding(top = 8.dp))
         }
 
         item(key = "file_provider_card") {
@@ -1100,4 +1178,226 @@ private fun SmallActionButton(
             fontWeight = FontWeight.SemiBold,
         )
     }
+}
+
+@Composable
+private fun BackgroundPauseModeCard(
+    currentMode: ProcessHelper.BackgroundPauseMode,
+    onModeChanged: (ProcessHelper.BackgroundPauseMode) -> Unit,
+) {
+    // Tracks if the card is expanded. False = collapsed by default.
+    var expanded by remember { mutableStateOf(false) }
+
+    // Each entry: mode, title string res, subtitle string res.
+    val options = listOf(
+        Triple(ProcessHelper.BackgroundPauseMode.ALL,            R.string.settings_other_bg_pause_all_title,            R.string.settings_other_bg_pause_all_subtitle),
+        Triple(ProcessHelper.BackgroundPauseMode.GAME_ONLY,      R.string.settings_other_bg_pause_game_only_title,      R.string.settings_other_bg_pause_game_only_subtitle),
+        Triple(ProcessHelper.BackgroundPauseMode.ALL_EXCEPT_GAME,R.string.settings_other_bg_pause_all_except_game_title,R.string.settings_other_bg_pause_all_except_game_subtitle),
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CardDark)
+            .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            // Header Row - Clicking this toggles expansion
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { expanded = !expanded },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(IconBoxBg),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Tune,
+                        contentDescription = null,
+                        tint = Accent,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+                Spacer(Modifier.width(13.dp))
+                Text(
+                    text = stringResource(R.string.settings_other_bg_pause_mode_title),
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+                // Chevron icon indicating state
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            // Options list - Only visible when expanded
+            if (expanded) Spacer(Modifier.height(10.dp))
+            options.forEach { (mode, titleRes, subtitleRes) ->
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically(),
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onModeChanged(mode) }
+                            .padding(vertical = 4.dp, horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(
+                            selected = currentMode == mode,
+                            onClick = { onModeChanged(mode) },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = Accent,
+                                unselectedColor = TextSecondary,
+                            ),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(titleRes),
+                                color = TextPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                text = stringResource(subtitleRes),
+                                color = TextSecondary,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeartbeatFrequencyCard(
+    currentFrequency: Int,
+    onFrequencyChanged: (Int) -> Unit,
+) {
+    // Raw text while the user is typing; committed as Int on Done/focus-loss.
+    var rawText by remember(currentFrequency) { mutableStateOf(currentFrequency.toString()) }
+    val focusManager = LocalFocusManager.current
+
+    // Derive the effective value and whether the current input is in error,
+    // so we can give the user immediate feedback without committing bad state.
+    val parsed = rawText.trim().toIntOrNull()
+    val isError = parsed == null || (parsed != 0 && parsed < 5)
+    val effectiveLabel = when {
+        parsed == null  -> stringResource(R.string.settings_other_bg_heartbeat_disabled)
+        parsed == 0     -> stringResource(R.string.settings_other_bg_heartbeat_disabled)
+        parsed < 5      -> stringResource(R.string.settings_other_bg_heartbeat_minimum)
+        else            -> stringResource(R.string.settings_other_bg_heartbeat_effective, parsed)
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(CardDark)
+            .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(IconBoxBg),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Timer,
+                        contentDescription = null,
+                        tint = Accent,
+                        modifier = Modifier.size(17.dp),
+                    )
+                }
+                Spacer(Modifier.width(13.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_other_bg_heartbeat_title),
+                        color = TextPrimary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_other_bg_heartbeat_subtitle),
+                        color = TextSecondary,
+                        fontSize = 11.sp,
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            OutlinedTextField(
+                value = rawText,
+                onValueChange = { rawText = it.filter { c -> c.isDigit() } },
+                singleLine = true,
+                isError = isError,
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Number,
+                    imeAction = ImeAction.Done,
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        focusManager.clearFocus()
+                        commitFrequency(parsed, onFrequencyChanged)
+                    },
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onFocusChanged { focus ->
+                        // Commit and clamp when the user leaves the field,
+                        // so tapping elsewhere still saves the value.
+                        if (!focus.isFocused) {
+                            commitFrequency(parsed, onFrequencyChanged)
+                        }
+                    },
+                suffix = { Text("s", color = TextSecondary, fontSize = 13.sp) },
+                supportingText = effectiveLabel.let { label ->
+                    {
+                        Text(
+                            text = label,
+                            color = if (isError) Warning else TextSecondary,
+                            fontSize = 11.sp,
+                        )
+                    }
+                },
+            )
+        }
+    }
+}
+
+// Extracted so both Done-action and focus-loss share identical clamping logic.
+private fun commitFrequency(parsed: Int?, onFrequencyChanged: (Int) -> Unit) {
+    val committed = when {
+        parsed == null  -> 0     // revert to default on empty / non-numeric
+        parsed == 0     -> 0     // explicitly disabled
+        parsed < 5      -> 5     // clamp to minimum
+        else            -> parsed
+    }
+    onFrequencyChanged(committed)
 }

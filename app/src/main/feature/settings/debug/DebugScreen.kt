@@ -8,8 +8,10 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
@@ -310,37 +312,49 @@ fun DebugScreen(
         }
 
         item(key = "log_tag_filter_card") {
-            LogTagFilterCard(
-                mode = state.tagFilterMode,
-                selectedTags = state.selectedTags,
-                enabled = state.appDebug,
-                onEdit = { showTagFilterDialog = true },
-                onModeChanged = onTagFilterModeChanged,
-                onRemoveSelectedTag = { tag ->
-                    onSelectedTagsChanged(state.selectedTags - tag)
-                },
-            )
+            AnimatedVisibility(
+                visible = state.appDebug || state.eventWatchLog,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                LogTagFilterCard(
+                    mode = state.tagFilterMode,
+                    selectedTags = state.selectedTags,
+                    enabled = state.appDebug || state.eventWatchLog,
+                    onEdit = { showTagFilterDialog = true },
+                    onModeChanged = onTagFilterModeChanged,
+                    onRemoveSelectedTag = { tag ->
+                        onSelectedTagsChanged(state.selectedTags - tag)
+                    },
+                )
+            }
         }
 
         item(key = "manual_text_filter_field") {
-            var manualFilterText by remember { mutableStateOf(LogManager.getManualTextFilter()) }
-            val focusManager = LocalFocusManager.current
-            OutlinedTextField(
-                value = manualFilterText,
-                onValueChange = {
-                    manualFilterText = it
-                    onManualTextFilterChanged(it)
-                },
-                placeholder = { Text(stringResource(R.string.settings_debug_manual_text_filter_hint)) },
-                singleLine = true,
-                enabled = state.appDebug,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp)
-                    .focusProperties { canFocus = state.appDebug },
-            )
+            AnimatedVisibility(
+                visible = state.appDebug || state.eventWatchLog,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                var manualFilterText by remember { mutableStateOf(LogManager.getManualTextFilter()) }
+                val focusManager = LocalFocusManager.current
+                OutlinedTextField(
+                    value = manualFilterText,
+                    onValueChange = {
+                        manualFilterText = it
+                        onManualTextFilterChanged(it)
+                    },
+                    placeholder = { Text(stringResource(R.string.settings_debug_manual_text_filter_hint)) },
+                    singleLine = true,
+                    enabled = state.appDebug || state.eventWatchLog,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                        .focusProperties { canFocus = state.appDebug  || state.eventWatchLog },
+                )
+            }
         }
 
         item(key = "emulation_section") {

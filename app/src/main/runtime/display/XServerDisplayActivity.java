@@ -447,6 +447,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     private boolean isDarkMode;
     private boolean enableLogsMenu;
+    private boolean autoPauseContainer;
     private static final String TAG = "XServerDisplayActivity";
     private static final AtomicLong breadcrumbCounter = new AtomicLong(0);
 
@@ -909,6 +910,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         com.winlator.cmod.runtime.system.LogManager.prepareForNewSession(this);
 
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        ProcessHelper.setBackgroundPauseMode(
+                ProcessHelper.getBackgroundPauseMode().fromPrefValue(
+                        preferences.getString("background_pause_mode", ProcessHelper.getBackgroundPauseMode().GAME_ONLY.getPrefValue())
+                )
+        );
+
         com.winlator.cmod.runtime.system.ApplicationLogGate.refresh(this);
         applyPreferredRefreshRate();
         launchedFromPinnedShortcut = isPinnedShortcutLaunchIntent(getIntent());
@@ -934,7 +941,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 multicastLock.acquire();
             }
         } catch (Exception e) {
-            Log.w("XServerDisplayActivity", "Failed to acquire MulticastLock", e);
+            Log.w(TAG, "Failed to acquire MulticastLock", e);
         }
 
         dualSeriesBattery = preferences.getBoolean(FrameRating.PREF_HUD_DUAL_SERIES_BATTERY, false);
@@ -944,6 +951,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         isTapToClickEnabled = true;
         boolean isOpenWithAndroidBrowser = preferences.getBoolean("open_with_android_browser", false);
         boolean isShareAndroidClipboard = preferences.getBoolean("share_android_clipboard", false);
+        autoPauseContainer = preferences.getBoolean("enable_auto_pause_when_background", false);
 
         winHandler = new WinHandler(this);
         winHandlerStopped.set(false);
@@ -996,7 +1004,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             if (!isMouseDisabled && xServer != null && xServer.getRenderer() != null
                     && xServer.getRenderer().isCursorVisible()) {
                 xServer.getRenderer().setCursorVisible(false);
-                Log.d("XServerDisplayActivity", "Mouse cursor hidden after inactivity.");
+                Log.d(TAG, "Mouse cursor hidden after inactivity.");
             }
         };
 
@@ -2321,63 +2329,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         boolean cleaningUp = exitRequested.get() || sessionCleanupStarted.get() || activityDestroyed.get();
 
         if (!cleaningUp && environment != null) {
-            /*xServerView.onResume();
-            environment.onResume();*/
-            long breadcrumbId = breadcrumbCounter.incrementAndGet();
-
-            // xServerView.onResume() breadcrumb before
-            long tBeforeSurfaceNano = System.nanoTime();
-            long tBeforeSurfaceMs = System.currentTimeMillis();
-            LogManager.logI(TAG,
-                    "breadcrumbId=" + breadcrumbId + " surface resume starts before xServerView.onResume"
-                            + " tsNano=" + tBeforeSurfaceNano + " tsMs=" + tBeforeSurfaceMs
-                            + " thread=" + Thread.currentThread().getName(),
-                    this);
-
-            try {
-                xServerView.onResume();
-            } catch (Throwable t) {
-                LogManager.logW(TAG,
-                        "breadcrumbId=" + breadcrumbId + " exception during xServerView.onResume",
-                        t, this);
-                throw t;
-            }
-
-            long tAfterSurfaceNano = System.nanoTime();
-            long tAfterSurfaceMs = System.currentTimeMillis();
-            LogManager.logI(TAG,
-                    "breadcrumbId=" + breadcrumbId + " surface resume completed after xServerView.onResume"
-                            + " tsNano=" + tAfterSurfaceNano + " tsMs=" + tAfterSurfaceMs
-                            + " elapsedNs=" + (tAfterSurfaceNano - tBeforeSurfaceNano)
-                            + " thread=" + Thread.currentThread().getName(),
-                    this);
-
-            // environment.onResume() breadcrumb before
-            long tBeforeEnvNano = System.nanoTime();
-            long tBeforeEnvMs = System.currentTimeMillis();
-            LogManager.logI(TAG,
-                    "breadcrumbId=" + breadcrumbId + " environment resume starts before environment.onResume"
-                            + " tsNano=" + tBeforeEnvNano + " tsMs=" + tBeforeEnvMs
-                            + " thread=" + Thread.currentThread().getName(),
-                    this);
-
-            try {
-                environment.onResume();
-            } catch (Throwable t) {
-                LogManager.logW(TAG,
-                        "breadcrumbId=" + breadcrumbId + " exception during environment.onResume",
-                        t, this);
-                throw t;
-            }
-
-            long tAfterEnvNano = System.nanoTime();
-            long tAfterEnvMs = System.currentTimeMillis();
-            LogManager.logI(TAG,
-                    "breadcrumbId=" + breadcrumbId + " environment resume completed after environment.onResume"
-                            + " tsNano=" + tAfterEnvNano + " tsMs=" + tAfterEnvMs
-                            + " elapsedNs=" + (tAfterEnvNano - tBeforeEnvNano)
-                            + " thread=" + Thread.currentThread().getName(),
-                    this);
+            xServerView.onResume();
+            environment.onResume();
         }
 
         if (inputControlsView != null && touchpadView != null) {
@@ -2392,7 +2345,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
 
         if (!cleaningUp && !isPaused) {
-            ProcessHelper.resumeAllWineProcesses();
+            if (autoPauseContainer) ProcessHelper.resumeAllWineProcesses();
         }
 
         if (taskManagerPaneVisible && taskManagerTimer == null) {
@@ -2404,7 +2357,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         SessionKeepAliveService.onResumeSession(this);
 
         LogManager.log(TAG, "Session resumed", getApplicationContext());
-        handler.postDelayed(LogManager::stopEventWatch, 5000);
+        handler.postDelayed(LogManager::stopEventWatch, 8000);
     }
 
     @Override
@@ -2424,10 +2377,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
         boolean cleaningUp = exitRequested.get() || sessionCleanupStarted.get() || activityDestroyed.get();
 
+        if (!cleaningUp) {
+            if (autoPauseContainer) ProcessHelper.pauseAllWineProcesses();
+        }
+
         if (!cleaningUp && !isInPictureInPictureMode()) {
             if (environment != null) {
-                ProcessHelper.pauseAllWineProcesses();
-
                 environment.onPause();
                 xServerView.onPause();
             }

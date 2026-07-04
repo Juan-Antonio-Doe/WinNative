@@ -91,10 +91,22 @@ class DebugFragment : Fragment() {
                             },
                             onExitReasonLogChanged = { checked ->
                                 preferences.edit { putBoolean("enable_exit_reason_log", checked) }
+                                if (checked) {
+                                    // Capture previous exit reasons, so the user doesn't need
+                                    // to restart the app to check previous reasons.
+                                    com.winlator.cmod.runtime.system.LogManager
+                                        .logLastExitReasons(ctx)
+                                }
                                 refresh()
                             },
                             onCrashLogChanged = { checked ->
                                 preferences.edit { putBoolean("enable_crash_log", checked) }
+                                if (checked) {
+                                    // Capture previous crashes, so the user doesn't need
+                                    // to restart to check previous reasons.
+                                    com.winlator.cmod.runtime.system.LogManager
+                                        .logLastExitReasons(ctx)
+                                }
                                 refresh()
                             },
                             onEventWatchLogChanged = { checked ->

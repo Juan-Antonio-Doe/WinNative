@@ -1127,6 +1127,24 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="settings_other_persistable_permission_failed">Unable to take persistable permissions: %1$s</string>
     <string name="settings_other_keep_app_open">Please keep the app open while this finishes.</string>
 
+    <string name="settings_other_section_background">Background Protection</string>
+    <string name="settings_other_bg_pause_mode_title">Background pause mode</string>
+    <string name="settings_other_bg_pause_all_title">Pause all processes</string>
+    <string name="settings_other_bg_pause_all_subtitle">Suspends all processes — Maximum battery saving (May cause issues).</string>
+    <string name="settings_other_bg_pause_game_only_title">Pause only the game</string>
+    <string name="settings_other_bg_pause_game_only_subtitle">Suspends only the active game process; other processes and services stays running.</string>
+    <string name="settings_other_bg_pause_all_except_game_title">Pause all except the game</string>
+    <string name="settings_other_bg_pause_all_except_game_subtitle">Suspends all processes and services but keeps the game process active.</string>
+    <string name="settings_other_bg_auto_pause_title">Auto pause session</string>
+    <string name="settings_other_bg_auto_pause_subtitle">Auto pause the session when the app is in the background or the device is locked.</string>
+    <string name="settings_other_bg_wakelock_title">Enable a CPU wake lock to enhance background protection</string>
+    <string name="settings_other_bg_wakelock_subtitle">Prevents the CPU from deep-sleeping while the session is paused. Increases battery usage but may improve persistence and stability on aggressive OEMs.</string>
+    <string name="settings_other_bg_heartbeat_title">Heartbeat frequency (seconds)</string>
+    <string name="settings_other_bg_heartbeat_subtitle">It can improve background app protection. A value of 0 disables the feature. The lower the value, the higher the potential battery consumption.</string>
+    <string name="settings_other_bg_heartbeat_disabled">Heartbeat disabled</string>
+    <string name="settings_other_bg_heartbeat_minimum">Minimum is 5 s — will be clamped on save</string>
+    <string name="settings_other_bg_heartbeat_effective">Runs every %1$d s</string>
+
     <!-- Settings > Content Packages -->
     <string name="settings_content_install">Install Content</string>
     <string name="settings_content_type">Category</string>

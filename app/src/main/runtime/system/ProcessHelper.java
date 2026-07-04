@@ -4,6 +4,7 @@ import android.os.Process;
 import android.util.Log;
 import com.winlator.cmod.shared.util.Callback;
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FilenameFilter;
@@ -16,6 +17,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.Executors;
+
+import timber.log.Timber;
 
 public abstract class ProcessHelper {
   private static final String TAG = "ProcessHelper";
@@ -57,6 +60,29 @@ public abstract class ProcessHelper {
           e);
     }
   }
+
+  public enum BackgroundPauseMode {
+    ALL("all"),
+    GAME_ONLY("game_only"),
+    ALL_EXCEPT_GAME("all_except_game");
+
+    private final String prefValue;
+
+    BackgroundPauseMode(String prefValue) { this.prefValue = prefValue; }
+    public String getPrefValue() { return prefValue; }
+
+    public static BackgroundPauseMode fromPrefValue(String value) {
+      if (value == null) return GAME_ONLY;
+      for (BackgroundPauseMode m : values()) {
+        if (m.prefValue.equals(value)) return m;
+      }
+      return GAME_ONLY;
+    }
+  }
+
+  private static volatile BackgroundPauseMode backgroundPauseMode = BackgroundPauseMode.GAME_ONLY;
+  private static volatile int registeredGamePid = -1;
+  private static final String OOM_TAG = "WNOomProtect";
 
   public static native int reapDeadChildrenNow();
 
@@ -215,17 +241,29 @@ public abstract class ProcessHelper {
     return false;
   }
 
+  // Make the OS never OOM-kill the paused process if possible.
   public static void protectAllWineProcesses() {
     ArrayList<String> processes = listRunningWineProcesses();
+//    String actualAdj = "";
     for (String process : processes) {
+      /*actualAdj = readProcFile("/proc/" + process + "/oom_score_adj");
+      LogManager.log(OOM_TAG, "pid=" + process +
+              " beforeSet=" + (actualAdj != null ? actualAdj.trim() : "unreadable"));*/
+
       setOomScoreAdj(Integer.parseInt(process), OOM_SCORE_ADJ_PROTECT);
+
+      // Check if the OOM Score is doing something, actually.
+      /*actualAdj = readProcFile("/proc/" + process + "/oom_score_adj");
+      LogManager.log(OOM_TAG,
+              "pid=" + process + " requested=" + OOM_SCORE_ADJ_PROTECT
+                      + " actual=" + (actualAdj != null ? actualAdj.trim() : "unreadable"));*/
     }
   }
 
   public static void pauseAllWineProcesses() {
     File proc = new File("/proc");
     ArrayList<String> processes = listRunningWineProcesses();
-    if (!processes.isEmpty()) Log.d(TAG, "Pausing session processes: " + processes);
+    if (!processes.isEmpty()) LogManager.log(TAG, "Pausing session processes: " + processes);
     for (String process : processes) {
       int pid = Integer.parseInt(process);
 
@@ -234,15 +272,30 @@ public abstract class ProcessHelper {
       String cmdlineData = readProcCmdline(proc, process);
       String normalized = (statData + " " + cmdlineData).toLowerCase();
 
-      // Make the OS never OOM-kill the paused process if possible.
-//      setOomScoreAdj(pid, OOM_SCORE_ADJ_PROTECT);
+      // Check which option the user has selected to pause processes
+      switch (backgroundPauseMode) {
+        case ALL:
+          suspendProcess(pid);
+          break;
+        case GAME_ONLY:
+          if (!isCoreProcess(normalized)) {
+            suspendProcess(pid);
+          } else if (PRINT_DEBUG) {
+            Timber.tag(TAG).d("Skipping SIGSTOP (mode=GAME_ONLY, not game): %s", process);
+          }
+          break;
+        case ALL_EXCEPT_GAME:
+          if (isCoreProcess(normalized)) {
+            suspendProcess(pid);
+          } else if (PRINT_DEBUG) {
+            Timber.tag(TAG).d("Skipping SIGSTOP (mode=ALL_EXCEPT_GAME, is game): %s", process);
+          }
+          break;
+        default:
+          break;
+      }
 
-      /*if (isCoreProcess(normalized)) {
-        if (PRINT_DEBUG) Log.d(TAG, "Skipping SIGSTOP for core process: " + process + " (" + normalized + ")");
-        continue;
-      }*/
-
-      suspendProcess(pid);
+//      suspendProcess(pid);
     }
   }
 
@@ -252,7 +305,7 @@ public abstract class ProcessHelper {
     for (String process : processes) {
       int pid = Integer.parseInt(process);
       resumeProcess(pid);
-//      setOomScoreAdj(pid, OOM_SCORE_ADJ_DEFAULT);
+      setOomScoreAdj(pid, OOM_SCORE_ADJ_DEFAULT);
     }
   }
 
@@ -568,8 +621,17 @@ public abstract class ProcessHelper {
       }
       else {
         // Alternative for compatibility
-        bytes = new byte[(int) fr.getChannel().size()];
-        fr.read(bytes);
+        try (ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
+          byte[] data = new byte[4096];
+          int nRead;
+          while ((nRead = fr.read(data)) != -1) {
+            buffer.write(data, 0, nRead);
+          }
+          bytes = buffer.toByteArray();
+        } catch (IOException e) {
+          Log.e(TAG, "Error reading cmdline (API level < 33)", e);
+          return "";
+        }
       }
 
       return new String(bytes, StandardCharsets.UTF_8).replace('\0', ' ');
@@ -588,5 +650,31 @@ public abstract class ProcessHelper {
   private static String trimProcessDetail(String detail) {
     if (detail.length() <= MAX_PROCESS_DETAIL_LENGTH) return detail;
     return detail.substring(0, MAX_PROCESS_DETAIL_LENGTH - 3) + "...";
+  }
+
+  public static void setBackgroundPauseMode(BackgroundPauseMode mode) {
+    backgroundPauseMode = mode != null ? mode : BackgroundPauseMode.ALL;
+  }
+
+  public static BackgroundPauseMode getBackgroundPauseMode() {
+    return backgroundPauseMode;
+  }
+
+  public static void registerGamePid(int pid) {
+    registeredGamePid = pid;
+    LogManager.log(TAG, "Registered game process PID: " + pid);
+  }
+
+  public static void unregisterGamePid() {
+    LogManager.log(TAG, "Unregistered game process PID (was: " + registeredGamePid + ")");
+    registeredGamePid = -1;
+  }
+
+  private static String readProcFile(String path) {
+    try {
+      return new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(path)));
+    } catch (Exception e) {
+      return null;
+    }
   }
 }

@@ -82,6 +82,8 @@ object LogManager {
     @JvmStatic
     val isDebugEnabled: Boolean get() = cachedAppDebugEnabled
 
+    private var crashHandlerInitialized = false
+
     private fun resolveContext(context: Context?): Context? = context?.applicationContext ?: appContext
 
     /**
@@ -105,38 +107,23 @@ object LogManager {
             prefsListener = listener
         }
 
-        /*val app = context.applicationContext
-        appContext = app
-        refreshCaches(app)
-
-        if (prefsListener == null) {
-            val prefs = PreferenceManager.getDefaultSharedPreferences(app)
-            val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-                when (key) {
-                    "enable_app_debug", "winlator_path_uri", "app_debug_tags", "app_debug_text_filter" ->
-                        refreshCaches(app)
-                }
-            }
-            prefs.registerOnSharedPreferenceChangeListener(listener)
-            prefsListener = listener
-        }
-
-        Log.d(TAG, "LogManager initialized, context name=${app.javaClass.name}, appContext=$appContext")
+//        Log.d(TAG, "LogManager initialized, context name=${app.javaClass.name}, appContext=$appContext")
 
         // Set up uncaught exception handler
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            if (isDebugEnabledCached) {
-                logCrash(app, thread, throwable)
+        if (!crashHandlerInitialized) {
+            val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                if (cachedCrashLogEnabled) {
+                    logCrash(app, thread, throwable)
+                }
+                // Call the original handler to maintain default behavior
+                defaultHandler?.uncaughtException(thread, throwable)
             }
-            // Call the original handler to maintain default behavior
-            defaultHandler?.uncaughtException(thread, throwable)
+            crashHandlerInitialized = true
         }
 
         // Capture previous exit reasons
-        if (isDebugEnabledCached && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            logLastExitReasons(app)
-        }*/
+        logLastExitReasons(app)
     }
 
     private fun refreshCaches(context: Context) {
@@ -610,10 +597,9 @@ object LogManager {
     @JvmStatic @JvmOverloads
     fun logLastExitReasons(context: Context? = null) {
         if (!cachedExitReasonLogEnabled && !cachedCrashLogEnabled) return
-        val ctx = resolveContext(context) ?: return
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val ctx = resolveContext(context) ?: return
         val maxExitReasons = 5
-
 
         try {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
@@ -632,20 +618,43 @@ object LogManager {
 
                     appendLine(
                         ctx, EXIT_REASONS_FILE, "I/$TAG",
-                        "pid=${info.pid} reason=${info.reason} importance=${info.importance} " +
-                                "desc=${info.description} timestamp=${Date(info.timestamp)}",
+                        "pid=${info.pid} reason=${info.reason}-[${getExitReasonName(info.reason)}] status=${info.status} " +
+                                "importance=${info.importance} desc=${info.description} timestamp=${Date(info.timestamp)}",
                     )
                 }
-                if (cachedCrashLogEnabled && info.reason == ApplicationExitInfo.REASON_CRASH_NATIVE) {
-                    try {
-                        info.traceInputStream?.use { input ->
-                            appendLine(
-                                ctx, CRASH_FILE, "I/$TAG",
-                                "Tombstone pid=${info.pid} timestamp=${Date(info.timestamp)}:\n${input.bufferedReader().readText()}",
-                            )
+                if (cachedCrashLogEnabled) {
+                    val isErrorReport = when (info.reason) {
+                        ApplicationExitInfo.REASON_CRASH,
+                        ApplicationExitInfo.REASON_CRASH_NATIVE,
+                        ApplicationExitInfo.REASON_ANR -> true
+                        else -> false
+                    }
+
+                    if (isErrorReport) {
+                        val type = when (info.reason) {
+                            ApplicationExitInfo.REASON_CRASH -> "Java Crash"
+                            ApplicationExitInfo.REASON_CRASH_NATIVE -> "Native Crash"
+                            ApplicationExitInfo.REASON_ANR -> "ANR"
+                            else -> "Critical Error"
                         }
-                    } catch (e: Exception) {
-                        Timber.tag(TAG).e("Failed to read tombstone trace: ${e.message}")
+
+                        try {
+                            info.traceInputStream?.use { input ->
+                                appendLine(
+                                    ctx, CRASH_FILE, "I/$TAG",
+                                    "=== Historical $type Detected ===\n" +
+                                            "PID: ${info.pid} | Timestamp: ${Date(info.timestamp)}\n" +
+                                            "Description: ${info.description}\n" +
+                                            "Trace Output:\n${input.bufferedReader().readText()}\n" +
+                                            "=== End $type Report ==="
+                                )
+                            } ?: run {
+                                // If no stream is available, log what we can
+                                appendLine(ctx, CRASH_FILE, "I/$TAG", "Historical $type (No trace available) pid=${info.pid} desc=${info.description}")
+                            }
+                        } catch (e: Exception) {
+                            Timber.tag(TAG).e("Failed to read historical trace: ${e.message}")
+                        }
                     }
                 }
             }
@@ -654,11 +663,25 @@ object LogManager {
         }
     }
 
-    /*@JvmStatic
+    private fun getExitReasonName(reason: Int): String = when (reason) {
+        ApplicationExitInfo.REASON_ANR -> "ANR"
+        ApplicationExitInfo.REASON_CRASH -> "JAVA_CRASH"
+        ApplicationExitInfo.REASON_CRASH_NATIVE -> "NATIVE_CRASH"
+        ApplicationExitInfo.REASON_EXIT_SELF -> "EXIT_SELF"
+        ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW_MEMORY (LMK)"
+        ApplicationExitInfo.REASON_SIGNALED -> "SIGNALED (KILL)"
+        ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED (e.g. Swipe)"
+        ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED (Force Stop)"
+        ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "DEPENDENCY_DIED"
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE_RESOURCE_USAGE"
+        else -> "UNKNOWN_REASON"
+    }
+
+    @JvmStatic
     fun logCrash(context: Context, thread: Thread, throwable: Throwable) {
         try {
-            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
-            val fileName = "crash_$timestamp.log"
+            val timestamp = SimpleDateFormat("yyyy-MM-dd_HH:mm:ss_SSS", Locale.US).format(Date())
+            val fileName = "crashFromThread_$timestamp.log"
             val file = File(getLogsDir(context), fileName)
 
             val crashInfo = buildString {
@@ -677,5 +700,5 @@ object LogManager {
         } catch (e: Exception) {
             Timber.e(e, "Failed to log crash")
         }
-    }*/
+    }
 }

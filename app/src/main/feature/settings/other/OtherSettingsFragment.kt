@@ -31,6 +31,7 @@ import com.winlator.cmod.feature.shortcuts.FrontendExporter
 import com.winlator.cmod.feature.setup.SetupWizardActivity
 import com.winlator.cmod.runtime.audio.midi.MidiManager
 import com.winlator.cmod.runtime.display.environment.ImageFsInstaller
+import com.winlator.cmod.runtime.system.ProcessHelper
 import com.winlator.cmod.shared.ui.toast.WinToast
 import com.winlator.cmod.shared.android.DirectoryPickerDialog
 import com.winlator.cmod.shared.android.LocaleHelper
@@ -170,6 +171,23 @@ class OtherSettingsFragment : Fragment() {
                             preferences.edit { putBoolean("enable_background_session", checked) }
                             refresh()
                         },
+                        onEnableAutoPauseChanged = { checked ->
+                            preferences.edit { putBoolean("enable_auto_pause_when_background", checked) }
+                            refresh()
+                        },
+                        onUseBackgroundWakelockChanged = { checked ->
+                            preferences.edit { putBoolean("enable_background_wakelock", checked) }
+                            refresh()
+                        },
+                        onHeartbeatFrequencyChanged = { seconds ->
+                            preferences.edit { putInt("background_heartbeat_frequency", seconds) }
+                            refresh()
+                        },
+                        onBackgroundPauseModeChanged = { mode ->
+                            preferences.edit { putString("background_pause_mode", mode.prefValue) }
+                            ProcessHelper.setBackgroundPauseMode(mode)
+                            refresh()
+                        },
                         onRunSetupWizard = {
                             startActivity(SetupWizardActivity.createManualRerunIntent(ctx))
                         },
@@ -235,6 +253,12 @@ class OtherSettingsFragment : Fragment() {
                 shareClipboard = preferences.getBoolean("share_android_clipboard", false),
                 recordPerformanceToFile = preferences.getBoolean("hud_record_to_file", false),
                 enableBackgroundSession = preferences.getBoolean("enable_background_session", false),
+                enableAutoPause = preferences.getBoolean("enable_auto_pause_when_background", false),
+                useBackgroundWakelock = preferences.getBoolean("enable_background_wakelock", false),
+                heartbeatFrequency = preferences.getInt("background_heartbeat_frequency", 0),
+                backgroundPauseMode = ProcessHelper.BackgroundPauseMode.fromPrefValue(
+                    preferences.getString("background_pause_mode", ProcessHelper.BackgroundPauseMode.GAME_ONLY.prefValue)
+                ),
                 imagefsInstallProgress = uiState.imagefsInstallProgress,
             )
     }

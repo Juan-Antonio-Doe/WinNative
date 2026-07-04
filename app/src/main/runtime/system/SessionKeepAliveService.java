@@ -7,16 +7,18 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
-import android.util.Log;
+import android.os.PowerManager;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
+import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.app.shell.UnifiedActivity;
@@ -80,8 +82,19 @@ public class SessionKeepAliveService extends Service {
 
     private static volatile boolean isContainerPaused = false;
 
-    //    private PowerManager.WakeLock wakeLock;
+        private PowerManager.WakeLock wakeLock;
     //    private WifiManager.WifiLock wifiLock;
+
+    private static volatile SharedPreferences prefs;
+    private static final String PREF_USE_WAKELOCK = "enable_background_wakelock";
+    private static final String PREF_HEARTBEAT_FREQUENCY = "background_heartbeat_frequency";
+    private static long heartbeat_interval_ms = 2 * 60 * 1000L; // 2 minutes
+
+    // Dedicated thread replaces Handler.postDelayed() — not subject to
+    // main-looper message-queue deferral in low-power states.
+    private volatile Thread heartbeatThread;
+    private volatile boolean heartbeatRunning = false;
+
     private NotificationHelper notificationHelper;
     private int notificationId = -1;
     private static final String NOTIFICATION_ID_NAME = "winnative.keepAlive";
@@ -105,7 +118,7 @@ public class SessionKeepAliveService extends Service {
                 } catch (Exception e) {
                     LogManager.logE(TAG, "Periodic HEARTBEAT protection sweep failed", e, getApplicationContext());
                 }
-            }, "WineOomProtection").start();
+            }, "SessionOomProtection").start();
             protectionHandler.postDelayed(this, 2 * 60 * 1000L); // Every 2 minutes
         }
     };
@@ -116,6 +129,17 @@ public class SessionKeepAliveService extends Service {
 
     public static void startSession(Context ctx) {
         if (ctx == null) return;
+        prefs = PreferenceManager.getDefaultSharedPreferences(ctx.getApplicationContext());
+        if (prefs != null) {
+            int frequency = prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 120);
+            if (frequency > 0) {
+                if (frequency < 5)
+                    heartbeat_interval_ms = 5 * 1000L;
+                else
+                    heartbeat_interval_ms = frequency * 1000L;
+            }
+        }
+
         sessionActive.set(true);
         isContainerPaused = false;
         isActivityVisible = true;
@@ -134,6 +158,11 @@ public class SessionKeepAliveService extends Service {
         isActivityVisible = false;
         LogManager.log(TAG, "onPauseSession", ctx);
 //        startProtectionHeartbeat();
+        if (instance != null) {
+            instance.acquireWakeLock();
+            instance.runOomSweep();
+            instance.startHeartbeat();
+        }
         updateForegroundState(ctx);
 //        sendCommand(ctx, ACTION_SESSION_PAUSE, null);
     }
@@ -148,6 +177,10 @@ public class SessionKeepAliveService extends Service {
         isActivityVisible = true;
         LogManager.log(TAG, "onResumeSession", ctx);
         // stopProtectionHeartbeat();
+        if (instance != null) {
+            instance.stopHeartbeat();
+            instance.releaseWakeLock();
+        }
         updateForegroundState(ctx);
 //        sendCommand(ctx, ACTION_SESSION_RESUME, null);
     }
@@ -158,6 +191,10 @@ public class SessionKeepAliveService extends Service {
         isContainerPaused = false;
 //        LogManager.log(ctx, TAG, "stopSession");
         // stopProtectionHeartbeat();
+        if (instance != null) {
+            instance.stopHeartbeat();
+            instance.releaseWakeLock();
+        }
         teardownEnvironmentAsync();
         updateForegroundState(ctx);
         LogManager.log(TAG, "Stopping game session in keep-alive service. Request by: " + Objects.requireNonNull(ctx.getClass().getName()), ctx);
@@ -350,6 +387,17 @@ public class SessionKeepAliveService extends Service {
         // Initialize the helper using the application context
         notificationHelper = new NotificationHelper(getApplicationContext());
         notificationHelper.createNotificationChannel(); // Replace ensureChannel() method.
+
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        if (pm != null) {
+            wakeLock = pm.newWakeLock(
+                    PowerManager.PARTIAL_WAKE_LOCK,
+                    "WinNative:SessionKeepAlive"
+            );
+            // setReferenceCounted(false): acquire/release are idempotent —
+            // calling release() without a matching acquire() won't throw.
+            wakeLock.setReferenceCounted(false);
+        }
     }
 
     @Override
@@ -438,18 +486,15 @@ public class SessionKeepAliveService extends Service {
         intent.setAction(action);
         if (tag != null) intent.putExtra(EXTRA_TAG, tag);
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-                    (ACTION_SESSION_START.equals(action) || ACTION_DL_START.equals(action))) {
+            if (ACTION_SESSION_START.equals(action) || ACTION_DL_START.equals(action)) {
                 app.startForegroundService(intent);
             } else {
                 app.startService(intent);
             }
         } catch (Exception e) {
             // If starting the service fails, try starting it as a foreground service as a fallback.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                app.startForegroundService(intent);
-            }
-            Log.w(TAG, "Failed to send command " + action, e);
+            app.startForegroundService(intent);
+            Timber.tag(TAG).w(e, "Failed to send command %s", action);
         }
     }
 
@@ -692,6 +737,9 @@ public class SessionKeepAliveService extends Service {
        // stopProtectionHeartbeat();
 //        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
 //        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
+        stopHeartbeat();
+        releaseWakeLock();
+
         serviceRunning.set(false);
         instance = null;
         super.onDestroy();
@@ -712,6 +760,74 @@ public class SessionKeepAliveService extends Service {
     // ===================================================================
     // Utility methods
     // ===================================================================
+
+    private void acquireWakeLock() {
+        if (wakeLock == null) return;
+        if (prefs == null) return;
+        if (!prefs.getBoolean(PREF_USE_WAKELOCK, false)) return;
+        if (!wakeLock.isHeld()) {
+            wakeLock.acquire();
+            Timber.tag(TAG).d("WakeLock acquired");
+        }
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            Timber.tag(TAG).d("WakeLock released");
+        }
+    }
+
+    private void startHeartbeat() {
+        if (prefs == null) return;
+        if (heartbeatRunning || prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0) <= 0) return;
+        heartbeatRunning = true;
+        Thread t = new Thread(() -> {
+            while (heartbeatRunning && sessionActive.get() && isContainerPaused) {
+                try {
+                    Thread.sleep(heartbeat_interval_ms);
+                    LogManager.log(TAG, "Heartbeat: Keeping container alive...", getApplicationContext());
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+                // Only run the protection sweep while the container is
+                // actually paused — no work needed in the foreground.
+                if (!heartbeatRunning || !isContainerPaused) {
+                    break;
+                }
+                runOomSweepInternal();
+            }
+            heartbeatRunning = false;
+        }, "SessionHeartbeat");
+        t.setDaemon(true);
+        t.start();
+        heartbeatThread = t;
+    }
+
+    private void stopHeartbeat() {
+        heartbeatRunning = false;
+        Thread t = heartbeatThread;
+        if (t != null) {
+            t.interrupt();
+            heartbeatThread = null;
+        }
+        LogManager.log(TAG, "Heartbeat stopped", this);
+    }
+
+    private void runOomSweep() {
+        new Thread(this::runOomSweepInternal, "SessionOomProtection").start();
+        LogManager.log(TAG, "OOM protection sweep started", this);
+    }
+
+    private void runOomSweepInternal() {
+        try {
+            ProcessHelper.protectAllWineProcesses();
+        } catch (Exception e) {
+//            Timber.tag(TAG).e(e, "OOM protection sweep failed");
+            LogManager.logE(TAG, "OOM protection sweep failed", e, this);
+        }
+    }
 
     @NonNull
     private static String getNotificationContent() {

@@ -267,7 +267,8 @@ class SteamService : Service() {
     }
 
     // The current shared family group the logged in user is joined to.
-    private var familyGroupMembers: ArrayList<Int> = arrayListOf()
+    // Edited to allow one thread to clear/modify it while others are reading it without crashing.
+    private val familyGroupMembers = java.util.concurrent.CopyOnWriteArrayList<Int>()
 
     private val appTokens: ConcurrentHashMap<Int, Long> = ConcurrentHashMap()
 
@@ -8444,6 +8445,8 @@ class SteamService : Service() {
         _unifiedFriends?.close()
         _unifiedFriends = null
 
+        familyGroupMembers.clear()
+
         isStopping = false
         retryAttempt = 0
         reconnectJob?.cancel()
@@ -8457,8 +8460,12 @@ class SteamService : Service() {
         suspendedForBionic = false
         appInForeground = true
 
-        PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
-        PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
+        runCatching {
+            PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
+        }
+        runCatching {
+            PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
+        }
     }
 
     // region [REGION] WN-Steam-Client lifecycle
