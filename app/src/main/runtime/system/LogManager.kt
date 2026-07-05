@@ -208,16 +208,17 @@ object LogManager {
     fun isAnyLoggingEnabled(context: Context): Boolean {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         return prefs.getBoolean("enable_wine_debug", false) ||
-                prefs.getBoolean("enable_box64_logs", false) ||
-                prefs.getBoolean("enable_fexcore_logs", false) ||
-                prefs.getBoolean("enable_steam_logs", false) ||
-                prefs.getBoolean("enable_input_logs", false) ||
-                prefs.getBoolean("enable_download_logs", false) ||
-                cachedAppDebugEnabled
+            prefs.getBoolean("enable_emulator_logs", false) ||
+            prefs.getBoolean("enable_steam_logs", false) ||
+            prefs.getBoolean("enable_input_logs", false) ||
+            prefs.getBoolean("enable_download_logs", false) ||
+            cachedAppDebugEnabled
     }
 
     fun updateLoggingState(context: Context) {
-        if (!isAnyLoggingEnabled(context)) stopLogging()
+        if (!isAnyLoggingEnabled(context)) {
+            stopLogging()
+        }
     }
 
     @JvmStatic
@@ -233,9 +234,11 @@ object LogManager {
 
     @JvmStatic
     fun prepareForNewSession(context: Context) {
+        stopAppLogging()
         val logsDir = getLogsDir(context)
         logsDir.listFiles()?.filter { it.name.endsWith(".old.log") }?.forEach { it.delete() }
         logsDir.listFiles()?.filter { it.name.endsWith(".log") }?.forEach { it.delete() }
+        startAppLogging(context)
     }
 
     // ── Tag management (settings UI surface) ──────────────────────────
@@ -349,6 +352,8 @@ object LogManager {
 
         try {
             stopAppLogging()
+            logFile.delete()
+            runBlockingLogcatCommand(arrayOf("logcat", "-c"))
             val pid = android.os.Process.myPid()
             appLogProcess =
                 Runtime.getRuntime().exec(
@@ -404,7 +409,7 @@ object LogManager {
         return logsDir
             .listFiles()
             ?.filter {
-                it.isFile && (it.name.endsWith(".log") || it.name.endsWith(".old.log") || it.name.endsWith(".txt"))
+                it.isFile && (it.name.endsWith(".log") || it.name.endsWith(".old.log") || it.name.endsWith(".txt") || it.name.endsWith(".csv"))
             }?.toTypedArray() ?: emptyArray()
     }
 
