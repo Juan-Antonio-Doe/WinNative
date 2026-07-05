@@ -1506,7 +1506,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         cachedPreloaderSubtitle = container != null ? container.getName() : "";
         showLaunchPreloader(getString(R.string.preloader_initializing));
 
-        if (preferences.getBoolean("enable_background_session", false)) {
+        if (preferences.getBoolean("enable_background_session", true)) {
             SessionKeepAliveService.startSession(this);
         }
 
@@ -3749,7 +3749,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
 
         if (!sessionCleanupStarted.get()) {
-            if (exitRequested.get() || !preferences.getBoolean("enable_background_session", false)) {
+            if (exitRequested.get() || !preferences.getBoolean("enable_background_session", true)) {
                 performForcedSessionCleanup("onDestroy");
             }
         }

@@ -590,7 +590,7 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
 
         storageGranted.value = hasStoragePermission()
         notifGranted.value = hasNotificationPermissionSilently()
-        backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", false)
+        backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", true)
         refreshWizardState()
         loadAdvancedProfiles()
 
@@ -617,7 +617,7 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
         if (notificationsEnabled) {
             notifDenied.value = false
         }
-        backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", false)
+        backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", true)
         refreshWizardState()
         refreshRecommendedPackageCache()
     }

@@ -252,7 +252,7 @@ class OtherSettingsFragment : Fragment() {
                 openInBrowser = preferences.getBoolean("open_with_android_browser", false),
                 shareClipboard = preferences.getBoolean("share_android_clipboard", false),
                 recordPerformanceToFile = preferences.getBoolean("hud_record_to_file", false),
-                enableBackgroundSession = preferences.getBoolean("enable_background_session", false),
+                enableBackgroundSession = preferences.getBoolean("enable_background_session", true),
                 enableAutoPause = preferences.getBoolean("enable_auto_pause_when_background", false),
                 useBackgroundWakelock = preferences.getBoolean("enable_background_wakelock", false),
                 heartbeatFrequency = preferences.getInt("background_heartbeat_frequency", 0),
