@@ -13,7 +13,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -253,7 +252,6 @@ class OtherSettingsFragment : Fragment() {
                 enableFileProvider = preferences.getBoolean("enable_file_provider", true),
                 openInBrowser = preferences.getBoolean("open_with_android_browser", false),
                 shareClipboard = preferences.getBoolean("share_android_clipboard", false),
-                enableBackgroundSession = preferences.getBoolean("enable_background_session", false),
                 enableBackgroundSession = preferences.getBoolean("enable_background_session", true),
                 enableAutoPause = preferences.getBoolean("enable_auto_pause_when_background", false),
                 useBackgroundWakelock = preferences.getBoolean("enable_background_wakelock", false),

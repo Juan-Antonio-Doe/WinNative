@@ -307,7 +307,6 @@ fun DebugScreen(
                 onCheckedChange = onAppDebugChanged,
             )
 
-        item(key = "exit_reason_log_card") {
             SettingsToggleCard(
                 title = stringResource(R.string.settings_debug_exit_reason_log_title),
                 subtitle = stringResource(R.string.settings_debug_exit_reason_log_subtitle),
@@ -315,9 +314,7 @@ fun DebugScreen(
                 checked = state.exitReasonLog,
                 onCheckedChange = onExitReasonLogChanged,
             )
-        }
 
-        item(key = "crash_log_card") {
             SettingsToggleCard(
                 title = stringResource(R.string.settings_debug_crash_log_title),
                 subtitle = stringResource(R.string.settings_debug_crash_log_subtitle),
@@ -325,9 +322,7 @@ fun DebugScreen(
                 checked = state.crashLog,
                 onCheckedChange = onCrashLogChanged,
             )
-        }
 
-        item(key = "event_watch_log_card") {
             SettingsToggleCard(
                 title = stringResource(R.string.settings_debug_event_watch_log_title),
                 subtitle = stringResource(R.string.settings_debug_event_watch_log_subtitle),
@@ -335,9 +330,7 @@ fun DebugScreen(
                 checked = state.eventWatchLog,
                 onCheckedChange = onEventWatchLogChanged,
             )
-        }
 
-        item(key = "log_tag_filter_card") {
             AnimatedVisibility(
                 visible = state.appDebug || state.eventWatchLog,
                 enter = fadeIn() + expandVertically(),
@@ -354,9 +347,7 @@ fun DebugScreen(
                     },
                 )
             }
-        }
 
-        item(key = "manual_text_filter_field") {
             AnimatedVisibility(
                 visible = state.appDebug || state.eventWatchLog,
                 enter = fadeIn() + expandVertically(),
@@ -381,7 +372,6 @@ fun DebugScreen(
                         .focusProperties { canFocus = state.appDebug  || state.eventWatchLog },
                 )
             }
-        }
 
             SectionLabel(stringResource(R.string.settings_debug_section_emulation), modifier = Modifier.padding(top = 8.dp))
 
@@ -687,7 +677,7 @@ private fun WineChannelsCard(
     }
 }
 
-// Wine debug message-class card (err / warn / fixme / trace)
+// Wine debug message-class card (err / warn / fix-me / trace)
 @Composable
 private fun WineClassesCard(
     options: List<String>,

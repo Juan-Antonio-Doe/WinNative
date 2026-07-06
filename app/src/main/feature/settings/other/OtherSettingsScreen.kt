@@ -2,9 +2,6 @@
 
 package com.winlator.cmod.feature.settings
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,8 +10,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -81,7 +76,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
@@ -297,13 +291,12 @@ fun OtherSettingsScreen(
 
             SettingsToggleCard(
                 title = stringResource(R.string.settings_general_background),
-                subtitle = "Keep session alive while in background",
+                subtitle = stringResource(R.string.settings_other_background_subtitle),
                 icon = Icons.Outlined.Visibility,
                 checked = state.enableBackgroundSession,
                 onCheckedChange = onEnableBackgroundSessionChanged,
             )
 
-        item(key = "auto_pause_card") {
             SettingsToggleCard(
                 title = stringResource(R.string.settings_other_bg_auto_pause_title),
                 subtitle = stringResource(R.string.settings_other_bg_auto_pause_subtitle),
@@ -311,9 +304,7 @@ fun OtherSettingsScreen(
                 checked = state.enableAutoPause,
                 onCheckedChange = onEnableAutoPauseChanged,
             )
-        }
 
-        item(key = "background_wakelock_card") {
             AnimatedVisibility(
                 visible = state.enableBackgroundSession,
                 enter = fadeIn() + expandVertically(),
@@ -327,9 +318,7 @@ fun OtherSettingsScreen(
                     onCheckedChange = onUseBackgroundWakelockChanged,
                 )
             }
-        }
 
-        item(key = "background_heartbeat_card") {
             AnimatedVisibility(
                 visible = state.enableBackgroundSession && state.useBackgroundWakelock,
                 enter = fadeIn() + expandVertically(),
@@ -340,14 +329,11 @@ fun OtherSettingsScreen(
                     onFrequencyChanged = onHeartbeatFrequencyChanged,
                 )
             }
-        }
 
-        item(key = "background_pause_mode_card") {
             BackgroundPauseModeCard(
                 currentMode = state.backgroundPauseMode,
                 onModeChanged = onBackgroundPauseModeChanged,
             )
-        }
 
             SettingsToggleCard(
                 title = stringResource(R.string.session_drawer_output_to_display),
@@ -359,7 +345,6 @@ fun OtherSettingsScreen(
 
             SectionLabel(stringResource(R.string.settings_other_section_integration), modifier = Modifier.padding(top = 8.dp))
 
-        item(key = "file_provider_card") {
             SettingsToggleCard(
                 title = stringResource(R.string.settings_general_enable_file_provider),
                 subtitle = stringResource(R.string.settings_general_file_provider_summary),
@@ -466,7 +451,9 @@ private fun SettingsToggleCard(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                modifier = Modifier.scale(0.78f).focusProperties { canFocus = false },
+                modifier = Modifier
+                    .scale(0.78f)
+                    .focusProperties { canFocus = false },
                 colors =
                     outlinedSwitchColors(
                         accentColor = accentColor,
@@ -613,7 +600,8 @@ private fun SettingsDropdownCard(
                                 onActivate = { if (options.isNotEmpty()) expanded = true },
                                 highlightColor = NavHighlight,
                                 tapToSelect = true,
-                            ).padding(horizontal = 10.dp, vertical = 7.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 7.dp)
                             .widthIn(max = 180.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -751,7 +739,8 @@ private fun SoundFontCard(
                                     onActivate = { if (files.isNotEmpty()) expanded = true },
                                     highlightColor = NavHighlight,
                                     tapToSelect = true,
-                                ).padding(horizontal = 10.dp, vertical = 8.dp),
+                                )
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -1117,7 +1106,8 @@ private fun SmallActionButton(
                     onActivate = onClick,
                     highlightColor = NavHighlight,
                     tapToSelect = true,
-                ).padding(horizontal = 11.dp, vertical = 6.dp),
+                )
+                .padding(horizontal = 11.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
