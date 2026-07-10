@@ -186,7 +186,7 @@ class SteamService : Service() {
     @Inject
     lateinit var downloadingAppInfoDao: DownloadingAppInfoDao
 
-//    private lateinit var notificationHelper: NotificationHelper
+    private lateinit var notificationHelper: NotificationHelper
     /*var notificationID = 1
     var preferences: SharedPreferences? = null*/
     /*private var STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID = -3   // Previus default: 3
@@ -7540,9 +7540,9 @@ class SteamService : Service() {
         super.onCreate()
         instance = this
 
-        /*notificationHelper = NotificationHelper(applicationContext)
+        notificationHelper = NotificationHelper(applicationContext)
         // Assing a unique value to this notifiaction ID
-        if (STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID < 0) {
+        /*if (STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID < 0) {
             STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID = notificationHelper.generateNotificationId(this, STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID_NAME)
         }*/
 
