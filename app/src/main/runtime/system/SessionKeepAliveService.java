@@ -82,6 +82,7 @@ public class SessionKeepAliveService extends Service {
     // Both are updated from the main thread; volatile is sufficient for reads.
     private static volatile boolean isAppInBackground = false;
     private static volatile boolean isScreenLocked = false;
+    public static volatile boolean exitingFromNotification = false;
     private BroadcastReceiver screenStateReceiver;
 
     private PowerManager.WakeLock wakeLock;
@@ -125,6 +126,7 @@ public class SessionKeepAliveService extends Service {
         sessionActive.set(true);
         isContainerPaused = false;
         isActivityVisible = true;
+        exitingFromNotification = false;
         LogManager.log(TAG, "startSession", ctx);
         updateForegroundState(ctx);
     }
@@ -367,6 +369,7 @@ public class SessionKeepAliveService extends Service {
 
         // Handle the Exit button from the notification
         if (ACTION_SESSION_STOP.equals(action)) {
+            exitingFromNotification = true;
             boolean chatStayAlive = PrefManager.INSTANCE.getChatStayRunningOnExit();
 
             // If a game is running, and we want to keep chat alive, only stop the session.
@@ -400,7 +403,8 @@ public class SessionKeepAliveService extends Service {
     private void ensureForeground() {
         boolean containerActive = sessionActive.get();
         // Only show Exit button if app is in background AND container is running or user wants to keep steam chat alive.
-        boolean showExit = isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());
+//        boolean showExit = isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues.
+        boolean showExit = isAppVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit();
 
         // Determine target activity: Game screen if active, else Main menu
         Class<?> targetActivity = containerActive ? XServerDisplayActivity.class : UnifiedActivity.class;

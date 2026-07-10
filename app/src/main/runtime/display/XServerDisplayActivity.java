@@ -3049,22 +3049,42 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             return;
         }
 
+        // ToDo: Find a way to avoid stealing focus from the user without causing crashes, ANRs, or session re-starts when opening the app again
+        //  after use 'Exit' in the notification.
         // If the app is already in the background (e.g. the user pressed Exit
         // from the notification while using another app), just finish this
         // Activity without starting UnifiedActivity — doing so would bring
         // WinNative in front of whatever the user was doing.
-        if (SessionKeepAliveService.isAppVisible()) {
-            finish();
+        if (SessionKeepAliveService.isAppInBackground() && SessionKeepAliveService.exitingFromNotification) {
+            // Navigate to the main screen to guarantee a clean back stack regardless
+            // of how this activity was originally launched, then immediately push the task
+            // back so we don't steal the foreground.
+            startUnifiedActivity();
+            // Suppress the transition animation — without this, there is a brief
+            // visible flash of UnifiedActivity before the task goes to the back.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                overrideActivityTransition(OVERRIDE_TRANSITION_CLOSE, 0, 0);
+            } else {
+                overridePendingTransition(0, 0);
+            }
+            // Send the task to the back *without* finishing — CLEAR_TOP will finish
+            // XServerDisplayActivity and surface UnifiedActivity naturally, all
+            // while the task stays behind whatever the user was doing.
+            moveTaskToBack(true);
             return;
         }
 
         returnToUnifiedActivity();
     }
 
-    private void returnToUnifiedActivity() {
+    private void startUnifiedActivity() {
         Intent intent = new Intent(this, UnifiedActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         startActivity(intent);
+    }
+
+    private void returnToUnifiedActivity() {
+        startUnifiedActivity();
         finish();
     }
 
