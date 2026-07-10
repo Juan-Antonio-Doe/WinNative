@@ -7,13 +7,11 @@ import android.util.Base64
 import android.util.Log
 import android.widget.Toast
 import androidx.room.withTransaction
-import com.winlator.cmod.BuildConfig
 import com.winlator.cmod.R
 import com.winlator.cmod.app.PluviaApp
 import com.winlator.cmod.app.db.PluviaDatabase
 import com.winlator.cmod.app.db.download.DownloadRecord
 import com.winlator.cmod.app.service.DownloadService
-import com.winlator.cmod.app.service.NetworkMonitor
 import com.winlator.cmod.app.service.download.DownloadCoordinator
 import com.winlator.cmod.feature.shortcuts.LibraryShortcutUtils
 import com.winlator.cmod.feature.stores.steam.data.AppInfo
@@ -43,10 +41,7 @@ import com.winlator.cmod.feature.stores.steam.db.dao.EncryptedAppTicketDao
 import com.winlator.cmod.feature.stores.steam.db.dao.FileChangeListsDao
 import com.winlator.cmod.feature.stores.steam.db.dao.SteamAppDao
 import com.winlator.cmod.feature.stores.steam.db.dao.SteamLicenseDao
-import com.winlator.cmod.feature.stores.steam.enums.ControllerSupport
 import com.winlator.cmod.feature.stores.steam.enums.DownloadPhase
-import com.winlator.cmod.feature.stores.steam.enums.GameSource
-import com.winlator.cmod.feature.stores.steam.enums.Language
 import com.winlator.cmod.feature.stores.steam.enums.LoginResult
 import com.winlator.cmod.feature.stores.steam.enums.Marker
 import com.winlator.cmod.feature.stores.steam.enums.OS
@@ -86,19 +81,15 @@ import com.winlator.cmod.feature.stores.steam.utils.SteamUtils
 import com.winlator.cmod.feature.stores.steam.utils.WnKeyValue
 import com.winlator.cmod.feature.stores.steam.utils.generateSteamApp
 import com.winlator.cmod.feature.steamcloudsync.SteamAutoCloud
-import com.winlator.cmod.feature.sync.google.CloudSyncManager
 import com.winlator.cmod.runtime.container.Container
 import com.winlator.cmod.runtime.container.ContainerManager
 import com.winlator.cmod.runtime.display.environment.ImageFs
-import com.winlator.cmod.runtime.system.GPUInformation
 import com.winlator.cmod.runtime.system.LogManager
 import com.winlator.cmod.runtime.system.SessionKeepAliveService
 import com.winlator.cmod.shared.android.AppTerminationHelper
 import com.winlator.cmod.shared.ui.toast.WinToast
 import com.winlator.cmod.shared.android.NotificationHelper
-import com.winlator.cmod.shared.io.StorageUtils
 import dagger.hilt.android.AndroidEntryPoint
-import com.winlator.cmod.feature.stores.steam.enums.EDepotFileFlag
 import com.winlator.cmod.feature.stores.steam.enums.ELicenseFlags
 import com.winlator.cmod.feature.stores.steam.enums.ELicenseType
 import com.winlator.cmod.feature.stores.steam.enums.EPaymentMethod
@@ -122,7 +113,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -130,15 +120,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.filter
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.future.await
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
 import okhttp3.FormBody
 import okhttp3.Request
 import org.json.JSONArray
@@ -153,7 +140,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.util.Collections
 import java.util.Date
 import java.util.EnumSet
 import java.util.concurrent.ConcurrentHashMap
@@ -200,9 +186,11 @@ class SteamService : Service() {
     @Inject
     lateinit var downloadingAppInfoDao: DownloadingAppInfoDao
 
-    /*private lateinit var notificationHelper: NotificationHelper
-    var notificationID = 1
+//    private lateinit var notificationHelper: NotificationHelper
+    /*var notificationID = 1
     var preferences: SharedPreferences? = null*/
+    /*private var STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID = -3   // Previus default: 3
+    private val STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID_NAME = "winnative.steamChat"*/
 
     private var _unifiedFriends: SteamUnifiedFriends? = null
 
@@ -7553,7 +7541,12 @@ class SteamService : Service() {
         instance = this
 
         /*notificationHelper = NotificationHelper(applicationContext)
-        val notification = notificationHelper.createForegroundNotification("Steam Service is running")
+        // Assing a unique value to this notifiaction ID
+        if (STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID < 0) {
+            STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID = notificationHelper.generateNotificationId(this, STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID_NAME)
+        }*/
+
+        /*val notification = notificationHelper.createForegroundNotification("Steam Service is running")
         startForeground(1, notification)*/
 
         com.winlator.cmod.feature.stores.steam.wnsteam.WnLibSteamClient
@@ -7732,13 +7725,23 @@ class SteamService : Service() {
         backgroundIdleJob?.cancel()
         backgroundIdleJob = null
 
-        // ToDo start: Check this steam friends code
+        /** ToDo start: Check this steam friends code
+         * I don’t really understand this part or how to handle it. The whole point of a
+         * ForegroundService is to be started to protect the app while it’s in the background,
+         * not to start it every time the app returns from the background.
+         */
         // Restore the quiet foreground notification and drop the background-chat one.
         /*if (isRunning && !isStopping) {
             runCatching {
                 startForeground(1, notificationHelper.createForegroundNotification("Steam Service is running"))
                 notificationHelper.cancelBackgroundRunning()
             }.onFailure { Timber.w(it, "Failed to restore SteamService foreground notification") }
+        }*/
+        // Updated code
+        /*if (isRunning && !isStopping) {
+            runCatching {
+                notificationHelper.cancel(STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID)
+            }.onFailure { Timber.w(it, "Failed to cancel Steam Chat in background notification channel") }
         }*/
         // ToDo end.
         if (!suspendedForBackground) return
@@ -7757,7 +7760,12 @@ class SteamService : Service() {
     /** App went to the background — arm the deferred suspend check. */
     private fun handleAppBackgrounded() {
         appInForeground = false
-        // ToDo start: Check this Steam Friends code
+        /** ToDo start: Check this Steam Friends code
+         * Regarding this part, based on my previous PR about the background, doing this is dangerous:
+         * the OS could interpret it as an attempt to start while already in the background,
+         * which would throw an exception because Android does not allow that behavior.
+         * Also, this just show a message, it doesn't change the friend notification channel.
+         */
         /*if (PrefManager.chatStayRunningOnExit && isRunning && !isStopping) {
             runCatching {
                 startForeground(
@@ -7819,11 +7827,16 @@ class SteamService : Service() {
         messagePollerJob?.cancel()
         wnSession?.let { s -> runCatching { s.disconnect() } }
         // ToDo: Check this Steam Friends code:
-        scope.launch(Dispatchers.Main) {
+        /*scope.launch(Dispatchers.Main) {
             runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
                 .onFailure { Timber.w(it, "Failed to remove SteamService foreground state on background suspend") }
             runCatching { notificationHelper.cancel() }
                 .onFailure { Timber.w(it, "Failed to cancel SteamService notification on background suspend") }
+        }*/
+        // Background persistance updated code
+        scope.launch(Dispatchers.Main) {
+            runCatching { SessionKeepAliveService.stopComponent(applicationContext, SessionKeepAliveService.COMPONENT_STEAM) }
+                .onFailure { Timber.w(it, "Failed to remove SteamService foreground state on background suspend") }
         }
         // ToDo end.
         return true
@@ -8004,6 +8017,7 @@ class SteamService : Service() {
             runCatching { s.close() }
         }
         wnSession = null
+        SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM)
         clearValues()
     }
 

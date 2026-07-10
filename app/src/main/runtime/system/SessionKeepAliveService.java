@@ -1,12 +1,16 @@
 package com.winlator.cmod.runtime.system;
 
+import android.app.ActivityManager;
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
@@ -22,6 +26,7 @@ import androidx.preference.PreferenceManager;
 
 import com.winlator.cmod.R;
 import com.winlator.cmod.app.shell.UnifiedActivity;
+import com.winlator.cmod.feature.stores.steam.utils.PrefManager;
 import com.winlator.cmod.runtime.display.XServerDisplayActivity;
 import com.winlator.cmod.runtime.display.environment.XEnvironment;
 import com.winlator.cmod.runtime.display.xserver.XServer;
@@ -69,9 +74,9 @@ public class SessionKeepAliveService extends Service {
     private static final String ACTION_REMOVE_COMPONENT = "com.winlator.cmod.action.REMOVE_COMPONENT";
 
     public static final String COMPONENT_STEAM = "Steam";
+//    public static final String COMPONENT_STEAM_FRIENDS = "Steam Friends";
     public static final String COMPONENT_EPIC = "Epic";
     public static final String COMPONENT_GOG = "GOG";
-    public static final String COMPONENT_CONTAINER = "Container";
 
     private static final AtomicBoolean sessionActive = new AtomicBoolean(false);
     private static final HashSet<String> activeDownloads = new HashSet<>();
@@ -82,7 +87,15 @@ public class SessionKeepAliveService extends Service {
 
     private static volatile boolean isContainerPaused = false;
 
-        private PowerManager.WakeLock wakeLock;
+    // ── App visibility state ──────────────────────────────────────────────
+    // isAppInBackground: true when no Activity is STARTED (ProcessLifecycleOwner).
+    // isScreenLocked: true after ACTION_SCREEN_OFF, cleared by ACTION_USER_PRESENT.
+    // Both are updated from the main thread; volatile is sufficient for reads.
+    private static volatile boolean isAppInBackground = false;
+    private static volatile boolean isScreenLocked = false;
+    private BroadcastReceiver screenStateReceiver;
+
+    private PowerManager.WakeLock wakeLock;
     //    private WifiManager.WifiLock wifiLock;
 
     private static volatile SharedPreferences prefs;
@@ -308,6 +321,13 @@ public class SessionKeepAliveService extends Service {
         }
     }*/
 
+    public static boolean isAppInBackground()  { return isAppInBackground;  }
+    public static boolean isDeviceLocked()     { return isScreenLocked;      }
+
+    public static boolean isAppVisible() {
+        return isAppInBackground || isScreenLocked;
+    }
+
     // ===================================================================
     // Background download tracking
     // ===================================================================
@@ -341,7 +361,9 @@ public class SessionKeepAliveService extends Service {
     // ===================================================================
 
     private static boolean hasReason() {
-        return sessionActive.get() || !activeDownloads.isEmpty() || !activeComponents.isEmpty();
+        return sessionActive.get() || !activeDownloads.isEmpty() || !activeComponents.isEmpty() ||
+                (isAppVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit());
+
         /*if (sessionActive.get()) return true;
         synchronized (activeDownloads) {
             return !activeDownloads.isEmpty();
@@ -398,10 +420,65 @@ public class SessionKeepAliveService extends Service {
             // calling release() without a matching acquire() won't throw.
             wakeLock.setReferenceCounted(false);
         }
+
+        // Seed initial state from current lifecycle rather than assuming foreground.
+        isAppInBackground = !androidx.lifecycle.ProcessLifecycleOwner.get()
+                .getLifecycle().getCurrentState()
+                .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED);
+
+        androidx.lifecycle.ProcessLifecycleOwner.get()
+                .getLifecycle()
+                .addObserver(appLifecycleObserver);
+
+        // Screen-lock detection. ACTION_SCREEN_OFF/USER_PRESENT are protected
+        // broadcasts — dynamic registration only, no manifest entry needed.
+        screenStateReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String action = intent.getAction();
+                if (Intent.ACTION_SCREEN_OFF.equals(action)) {
+                    isScreenLocked = true;
+                    LogManager.log(TAG, "Screen turned off / device locked");
+                } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
+                    isScreenLocked = false;
+                    LogManager.log(TAG, "Device unlocked (user present)");
+                } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
+                    // Screen on but keyguard may still be showing.
+                    KeyguardManager km = (KeyguardManager) getSystemService(KEYGUARD_SERVICE);
+                    isScreenLocked = km != null && km.isKeyguardLocked();
+                }
+                updateForegroundState(context);
+            }
+        };
+
+        IntentFilter screenFilter = new IntentFilter();
+        screenFilter.addAction(Intent.ACTION_SCREEN_OFF);
+        screenFilter.addAction(Intent.ACTION_SCREEN_ON);
+        screenFilter.addAction(Intent.ACTION_USER_PRESENT);
+        registerReceiver(screenStateReceiver, screenFilter);
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent != null ? intent.getAction() : null;
+
+        // Handle the Exit button from the notification
+        if (ACTION_SESSION_STOP.equals(action)) {
+            boolean chatStayAlive = PrefManager.INSTANCE.getChatStayRunningOnExit();
+
+            // If a game is running, and we want to keep chat alive, only stop the session.
+            // updateForegroundState() will be called inside stopSession,
+            // and it will update the notification to the "Chat" state.
+            if (sessionActive.get() && chatStayAlive) {
+                stopSession(this);
+                cleanUpSession(this, "Exit button pressed");
+            } else {
+                // Otherwise, perform a full app shutdown.
+                closeApp(this);
+            }
+            return START_NOT_STICKY;
+        }
+
         // State is already current by the time this runs — every caller mutates
         // it before this Intent is ever sent. This just reconciles the actual
         // foreground/running status against that state.
@@ -409,7 +486,7 @@ public class SessionKeepAliveService extends Service {
             ensureForeground();
             serviceRunning.set(true);
         } else {
-                Timber.tag(TAG).d("onStartCommand found no active reason; stopping immediately");
+            Timber.tag(TAG).d("onStartCommand found no active reason; stopping immediately");
             stopForegroundCompat();
             stopSelf();
             serviceRunning.set(false);
@@ -419,17 +496,17 @@ public class SessionKeepAliveService extends Service {
 
     private void ensureForeground() {
         boolean containerActive = sessionActive.get();
-        // Only show Exit button if container is running AND app is in background
-        boolean showExit = containerActive && !isActivityVisible;
+        // Only show Exit button if app is in background AND container is running or user wants to keep steam chat alive.
+        boolean showExit = isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());
 
         // Determine target activity: Game screen if active, else Main menu
         Class<?> targetActivity = containerActive ? XServerDisplayActivity.class : UnifiedActivity.class;
 
         Notification n = notificationHelper.createForegroundNotification(
                 getNotificationContent(),
-                "WinNative", // Title
-                SessionKeepAliveService.class, // Service class for the 'Exit' action
-                showExit ? ACTION_SESSION_STOP : null, // Exit only for backgrounded container
+                "WinNative",
+                SessionKeepAliveService.class,
+                showExit ? ACTION_SESSION_STOP : null, // Exit only for backgrounded app
                 targetActivity // Activity class for the 'Open' (notification tap) action
         );
 
@@ -694,42 +771,10 @@ public class SessionKeepAliveService extends Service {
         super.onTaskRemoved(rootIntent);
         LogManager.logI(TAG, "Task removed (user swipe). Tearing down session and exiting process.", this);
 
-        sessionActive.set(false);
-        isContainerPaused = false;
-        isActivityVisible = false;
-        synchronized (activeDownloads) { activeDownloads.clear(); }
-        activeComponents.clear();
+        resetLocalState();
         // stopProtectionHeartbeat();
 
-        // Give the activity's own onDestroy → performForcedSessionCleanup a
-        // chance to run first; then defensively clean any wine processes that
-        // might still be alive, and exit the process so swipe behaves like the
-        // pre-existing "swipe-away closes everything" flow.
-        new Thread(() -> {
-            try {
-                Thread.sleep(1500L);
-                if (com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.isBionicHandoffActive()) {
-                    try {
-                        boolean kicked = com.winlator.cmod.feature.stores.steam.service.SteamService
-                                .Companion.bionicHandoffReleaseAndKickPlayingSessionBlocking(true, 2500L);
-                        LogManager.logI(TAG, "Task removal Steam cleanup: kickedPlayingSession=" + kicked, this);
-                    } catch (Throwable t) {
-                        LogManager.logW(TAG, "Task removal Steam cleanup failed", t, this);
-                    }
-                }
-                ProcessHelper.terminateSessionProcessesAndWait(1500, true);
-                ProcessHelper.drainDeadChildren("session keep-alive task removed");
-            } catch (Throwable t) {
-                LogManager.logW(TAG, "Defensive wine cleanup on task removal failed", t, this);
-            }
-            new Handler(Looper.getMainLooper()).post(() -> {
-                stopForegroundCompat();
-                stopSelf();
-                serviceRunning.set(false);
-                new Handler(Looper.getMainLooper()).postDelayed(
-                        () -> android.os.Process.killProcess(android.os.Process.myPid()), 500L);
-            });
-        }, "SessionKeepAliveCleanup").start();
+        performDefensiveCleanupAndExit(this);
     }
 
     @Override
@@ -739,6 +784,15 @@ public class SessionKeepAliveService extends Service {
 //        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         stopHeartbeat();
         releaseWakeLock();
+
+        androidx.lifecycle.ProcessLifecycleOwner.get()
+                .getLifecycle()
+                .removeObserver(appLifecycleObserver);
+
+        if (screenStateReceiver != null) {
+            try { unregisterReceiver(screenStateReceiver); } catch (Exception ignored) {}
+            screenStateReceiver = null;
+        }
 
         serviceRunning.set(false);
         instance = null;
@@ -841,7 +895,11 @@ public class SessionKeepAliveService extends Service {
             if (!activeDownloads.isEmpty()) return "Downloading and installing components in the background";
         }
 
-        // 3. LOW PRIORITY: Active Stores
+        // 3. MEDIUM PRIORITY: Steam friends (if enabled)
+        if (PrefManager.INSTANCE.getChatStayRunningOnExit() && isAppVisible())
+            return "Steam chat running in background";
+
+        // 4. LOW PRIORITY: Active store services
         if (!activeComponents.isEmpty()) {
             List<String> names = new ArrayList<>(activeComponents.keySet());
             return names.size() == 1
@@ -851,9 +909,78 @@ public class SessionKeepAliveService extends Service {
         return "WinNative is running in the background";
     }
 
+    private final androidx.lifecycle.DefaultLifecycleObserver appLifecycleObserver =
+            new androidx.lifecycle.DefaultLifecycleObserver() {
+                @Override
+                public void onStart(@NonNull androidx.lifecycle.LifecycleOwner owner) {
+                    isAppInBackground = false;
+                    LogManager.log(TAG, "App came to foreground (ProcessLifecycleOwner)");
+                    updateForegroundState(SessionKeepAliveService.this);
+                }
+
+                @Override
+                public void onStop(@NonNull androidx.lifecycle.LifecycleOwner owner) {
+                    isAppInBackground = true;
+                    LogManager.log(TAG, "App went to background (ProcessLifecycleOwner)");
+                    updateForegroundState(SessionKeepAliveService.this);
+                }
+            };
+
+    private static void resetLocalState() {
+        sessionActive.set(false);
+        isContainerPaused = false;
+        isActivityVisible = false;
+        synchronized (activeDownloads) { activeDownloads.clear(); }
+        activeComponents.clear();
+    }
+
+    /**
+     * Performs a deep cleanup of native processes and terminates the app PID.
+     * This is the shared logic between swiping away and clicking "Exit".
+     */
+    private static void performDefensiveCleanupAndExit(Context ctx) {
+        // Give the activity's own onDestroy → performForcedSessionCleanup a
+        // chance to run first; then defensively clean any wine processes that
+        // might still be alive, and exit the process so swipe/exit button behaves like the
+        // pre-existing "swipe-away closes everything" flow.
+        new Thread(() -> {
+            try {
+                Thread.sleep(1500L);
+                cleanUpSession(ctx, "session keep-alive shutdown");
+            } catch (Throwable t) {
+                LogManager.logW(TAG, "Defensive cleanup failed", t, ctx);
+            }
+
+            new Handler(Looper.getMainLooper()).post(() -> {
+                if (instance != null) {
+                    instance.stopForegroundCompat();
+                    instance.stopSelf();
+                }
+                serviceRunning.set(false);
+                // Final kill
+                new Handler(Looper.getMainLooper()).postDelayed(
+                        () -> android.os.Process.killProcess(android.os.Process.myPid()), 500L);
+            });
+        }, "SessionCleanupAndExit").start();
+    }
+
+    private static void cleanUpSession(Context ctx, String reason) {
+        if (com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.isBionicHandoffActive()) {
+            try {
+                boolean kicked = com.winlator.cmod.feature.stores.steam.service.SteamService
+                        .Companion.bionicHandoffReleaseAndKickPlayingSessionBlocking(true, 2500L);
+                LogManager.logI(TAG, "Task removal/Exit button - Steam cleanup: kickedPlayingSession=" + kicked, ctx);
+            } catch (Throwable t) {
+                LogManager.logW(TAG, "Task removal/Exit button - Steam cleanup failed", t, ctx);
+            }
+        }
+        ProcessHelper.terminateSessionProcessesAndWait(1500, true);
+        ProcessHelper.drainDeadChildren(reason);
+    }
+
     public static void stopAll(Context ctx) {
         stopSession(ctx);
-        activeComponents.clear();
+        resetLocalState();
 
         // Stop Steam specifically
         com.winlator.cmod.feature.stores.steam.service.SteamService.Companion.stop();
@@ -864,5 +991,11 @@ public class SessionKeepAliveService extends Service {
             svc.stopForegroundCompat();
             svc.stopSelf();
         }
+    }
+
+    // Stop everything and kill the app process.
+    public static void closeApp(Context ctx) {
+        stopAll(ctx);
+        performDefensiveCleanupAndExit(ctx);
     }
 }

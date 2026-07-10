@@ -1301,6 +1301,13 @@ private fun SegmentedControl(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
                     .background(if (isSelected) Accent else Color.Transparent)
+                    // Add paneNavItem so the controller can focus this option
+                    .paneNavItem(
+                        cornerRadius = 8.dp,
+                        onActivate = { onSelectedIndex(index) },
+                        highlightColor = NavHighlight,
+                        tapToSelect = true
+                    )
                     .clickable { onSelectedIndex(index) }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
                 contentAlignment = Alignment.Center,
@@ -1332,6 +1339,13 @@ private fun RemovableTagChip(tag: String, onRemove: () -> Unit) {
             modifier = Modifier
                 .size(20.dp)
                 .clip(RoundedCornerShape(10.dp))
+                // Add paneNavItem to the 'X' button container
+                .paneNavItem(
+                    cornerRadius = 10.dp,
+                    onActivate = { onRemove() },
+                    highlightColor = NavHighlight,
+                    tapToSelect = true
+                )
                 .clickable { onRemove() },
             contentAlignment = Alignment.Center,
         ) {

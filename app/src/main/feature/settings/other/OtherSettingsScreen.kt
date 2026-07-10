@@ -1150,7 +1150,14 @@ private fun BackgroundPauseModeCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded },
+                    .clip(RoundedCornerShape(8.dp))
+                    .paneNavItem(
+                        cornerRadius = 8.dp,
+                        onActivate = { expanded = !expanded },
+                        highlightColor = NavHighlight,
+                        tapToSelect = true,
+                    )
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
@@ -1195,8 +1202,14 @@ private fun BackgroundPauseModeCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable { onModeChanged(mode) }
-                            .padding(vertical = 4.dp, horizontal = 2.dp),
+                            .clip(RoundedCornerShape(8.dp))
+                            .paneNavItem(
+                                cornerRadius = 8.dp,
+                                onActivate = { onModeChanged(mode) },
+                                highlightColor = NavHighlight,
+                                tapToSelect = true,
+                            )
+                            .padding(vertical = 4.dp, horizontal = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(
@@ -1206,6 +1219,8 @@ private fun BackgroundPauseModeCard(
                                 selectedColor = Accent,
                                 unselectedColor = TextSecondary,
                             ),
+                            // Let the Row handle the focus
+                            modifier = Modifier.focusProperties { canFocus = false }
                         )
                         Spacer(Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
@@ -1308,6 +1323,20 @@ private fun HeartbeatFrequencyCard(
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .paneNavItem(
+                        cornerRadius = 8.dp,
+                        // onAdjust allows changing the value with D-pad
+                        onAdjust = { dir ->
+                            // Calculate the next value using a step of 5
+                            val next = when {
+                                currentFrequency == 5 && dir < 0 -> 0   // If at 5 and pressing Left, jump to 0 (Disabled)
+                                currentFrequency == 0 && dir > 0 -> 5   // If at 0 and pressing Right, jump to 5 (Minimum)
+                                else -> (currentFrequency + dir * 5).coerceAtLeast(0)   // Standard increment/decrement
+                            }
+                            onFrequencyChanged(next)
+                        },
+                        highlightColor = NavHighlight,
+                    )
                     .onFocusChanged { focus ->
                         // Commit and clamp when the user leaves the field,
                         // so tapping elsewhere still saves the value.
@@ -1333,8 +1362,7 @@ private fun HeartbeatFrequencyCard(
 // Extracted so both Done-action and focus-loss share identical clamping logic.
 private fun commitFrequency(parsed: Int?, onFrequencyChanged: (Int) -> Unit) {
     val committed = when {
-        parsed == null  -> 0     // revert to default on empty / non-numeric
-        parsed == 0     -> 0     // explicitly disabled
+        parsed == null || parsed == 0  -> 0     // revert to default on empty / non-numeric -> disabled
         parsed < 5      -> 5     // clamp to minimum
         else            -> parsed
     }

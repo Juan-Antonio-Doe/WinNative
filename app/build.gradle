@@ -161,18 +161,18 @@ android {
     flavorDimensions "branding"
 
     productFlavors {
-        standard {
+        /*standard {
             dimension "branding"
-            applicationId "com.winnative.cmod"
-        }
-        ludashi {
+            applicationId "com.winnative.test"
+        }*/
+        debugTest1 {
             dimension "branding"
-            applicationId "com.ludashi.benchmark"
+            applicationId "com.winnative.test1"
         }
-        pubg {
+        /*debugTest2 {
             dimension "branding"
-            applicationId "com.tencent.ig"
-        }
+            applicationId "com.winnative.test2"
+        }*/
     }
 
     ndkVersion '27.3.13750724'
@@ -237,7 +237,7 @@ android {
 }
 
 dependencies {
-    // debugImplementation "com.squareup.leakcanary:leakcanary-android:2.14"
+//    debugImplementation "com.squareup.leakcanary:leakcanary-android:2.14"
 
     implementation libs.okhttp
     implementation libs.okhttpDnsOverHttps
@@ -285,6 +285,7 @@ dependencies {
     implementation files('libs/MidiSynth/MidiSynth.jar')
     implementation libs.recyclerview
     implementation libs.coreKtx
+    implementation("androidx.lifecycle:lifecycle-process:2.9.0")    // New = compilation errors / gradle plugin update requirement.
 
 
     implementation 'com.android.ndk.thirdparty:openssl:1.1.1q-beta-1'

@@ -3049,6 +3049,15 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             return;
         }
 
+        // If the app is already in the background (e.g. the user pressed Exit
+        // from the notification while using another app), just finish this
+        // Activity without starting UnifiedActivity — doing so would bring
+        // WinNative in front of whatever the user was doing.
+        if (SessionKeepAliveService.isAppVisible()) {
+            finish();
+            return;
+        }
+
         returnToUnifiedActivity();
     }
 
