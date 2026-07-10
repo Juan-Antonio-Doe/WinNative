@@ -585,6 +585,7 @@
     <string name="container_fexcore_config">FEXCore</string>
     <string name="container_fexcore_preset">FEXCore Preset</string>
     <string name="container_fexcore_version">FEXCore Version</string>
+    <string name="use_unix_libs">Use UnixLibs</string>
 
     <!-- Container > Graphics Driver -->
     <string name="container_graphics_driver">Graphics Driver</string>
@@ -602,6 +603,8 @@
     <string name="container_graphics_bcn_emulation">BCn Emulation</string>
     <string name="container_graphics_bcn_emulation_type">BCn Emulation Type</string>
     <string name="container_graphics_bcn_emulation_cache">BCn Emulation Cache</string>
+    <string name="container_graphics_transcoder">BCn Transcoder</string>
+    <string name="container_graphics_quality">BCn Quality</string>
     <string name="shortcuts_graphics_sgsr_full_title">Snapdragon™ Game Super Resolution 1</string>
     <!-- Container > Presets -->
     <string name="container_presets_confirm_duplicate">Do you want to duplicate this preset?</string>
@@ -737,8 +740,9 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="session_drawer_hud_element_cpu">CPU</string>
     <string name="session_drawer_hud_element_ram">RAM</string>
     <string name="session_drawer_hud_element_battery">BAT</string>
-    <string name="session_drawer_hud_element_temp">TMP</string>
+    <string name="session_drawer_hud_element_temp">B.TMP</string>
     <string name="session_drawer_hud_element_graph">Graph</string>
+    <string name="session_drawer_hud_element_cpu_temp">C.TMP</string>
     <string name="hud_position_menu_title">Move HUD to</string>
     <string name="hud_position_top_left">Top Left</string>
     <string name="hud_position_top_center">Top Center</string>

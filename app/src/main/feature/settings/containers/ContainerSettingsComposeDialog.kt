@@ -422,6 +422,7 @@ class ContainerSettingsComposeDialog @JvmOverloads constructor(
         }
 
         state.fullscreenStretched.value = c?.isFullscreenStretched() ?: false
+        state.useUnixLibs.value = c?.isUseUnixLibs() ?: true
 
         // Steam fields are shortcut-only in the UI; leave any existing steam
         // state on the container untouched — saveSettings() skips them.
@@ -799,6 +800,7 @@ class ContainerSettingsComposeDialog @JvmOverloads constructor(
             c.setWinComponents(wincomponents)
             c.setDrives(drivesString)
             c.setFullscreenStretched(state.fullscreenStretched.value)
+            c.setUseUnixLibs(state.useUnixLibs.value)
             c.setInputType(finalInputType)
             c.setExclusiveXInput(state.containerExclusiveInput.value)
             c.setStartupSelection(startupSelection)
@@ -839,6 +841,7 @@ class ContainerSettingsComposeDialog @JvmOverloads constructor(
                 data.put("wincomponents", wincomponents)
                 data.put("drives", drivesString)
                 data.put("fullscreenStretched", state.fullscreenStretched.value)
+                data.put("useUnixLibs", state.useUnixLibs.value)
                 data.put("inputType", finalInputType)
                 data.put("exclusiveXInput", state.containerExclusiveInput.value)
                 data.put("startupSelection", startupSelection.toInt())
@@ -1099,6 +1102,10 @@ class ContainerSettingsComposeDialog @JvmOverloads constructor(
             context.resources.getStringArray(R.array.bcn_emulation_type_entries).toList()
         state.gfxBcnEmulationCacheEntries.value =
             context.resources.getStringArray(R.array.bcn_emulation_cache_entries).toList()
+        state.gfxTranscoderEntries.value =
+            context.resources.getStringArray(R.array.wrapper_transcoder_entries).toList()
+        state.gfxQualityEntries.value =
+            context.resources.getStringArray(R.array.wrapper_quality_entries).toList()
 
         val gpuNames = mutableListOf("Device")
         try {
@@ -1125,6 +1132,8 @@ class ContainerSettingsComposeDialog @JvmOverloads constructor(
         selectByValue(state.gfxBcnEmulationEntries.value, config.get("bcnEmulation") ?: "none", state.gfxSelectedBcnEmulation)
         selectByValue(state.gfxBcnEmulationTypeEntries.value, config.get("bcnEmulationType") ?: "compute", state.gfxSelectedBcnEmulationType)
         selectByValue(state.gfxBcnEmulationCacheEntries.value, config.get("bcnEmulationCache") ?: "0", state.gfxSelectedBcnEmulationCache)
+        selectByValue(state.gfxTranscoderEntries.value, config.get("transcoder") ?: "cpu", state.gfxSelectedTranscoder)
+        selectByValue(state.gfxQualityEntries.value, config.get("quality") ?: "low", state.gfxSelectedQuality)
         state.gfxSyncFrame.value = config.get("syncFrame") == "1"
         state.gfxDisablePresentWait.value = config.get("disablePresentWait") == "1"
         state.graphicsDriverVersion.value = config.get("version") ?: ""
@@ -1286,12 +1295,15 @@ class ContainerSettingsComposeDialog @JvmOverloads constructor(
         val bcnEmulation = state.gfxBcnEmulationEntries.value.getOrElse(state.gfxSelectedBcnEmulation.intValue) { "none" }
         val bcnEmulationType = state.gfxBcnEmulationTypeEntries.value.getOrElse(state.gfxSelectedBcnEmulationType.intValue) { "compute" }
         val bcnEmulationCache = state.gfxBcnEmulationCacheEntries.value.getOrElse(state.gfxSelectedBcnEmulationCache.intValue) { "0" }
+        val transcoder = state.gfxTranscoderEntries.value.getOrElse(state.gfxSelectedTranscoder.intValue) { "cpu" }
+        val quality = state.gfxQualityEntries.value.getOrElse(state.gfxSelectedQuality.intValue) { "low" }
         return "vulkanVersion=$vulkanVersion;version=$version;blacklistedExtensions=$blacklisted;" +
             "maxDeviceMemory=$maxDeviceMemory;presentMode=$presentMode;syncFrame=$syncFrame;" +
             "disablePresentWait=$disablePresentWait;resourceType=$resourceType;" +
             "bcnEmulation=$bcnEmulation;bcnEmulationType=$bcnEmulationType;" +
             "bcnEmulationCache=$bcnEmulationCache;gpuName=$gpuName;" +
-            "compositorPresentMode=$compositorPresentMode"
+            "compositorPresentMode=$compositorPresentMode;" +
+            "transcoder=$transcoder;quality=$quality"
     }
 
     private fun buildDxvkConfigFromState(): String {

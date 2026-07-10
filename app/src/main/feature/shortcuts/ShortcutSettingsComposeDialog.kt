@@ -414,6 +414,10 @@ class ShortcutSettingsComposeDialog private constructor(
             if (container.isFullscreenStretched) "1" else "0"
         )
         state.fullscreenStretched.value = fullscreenStretched == "1"
+        state.useUnixLibs.value = getShortcutSetting(
+            "useUnixLibs",
+            if (container.isUseUnixLibs) "1" else "0"
+        ) == "1"
 
         // LC_ALL
         state.lcAll.value = getShortcutSetting("lc_all", container.getLC_ALL())
@@ -1069,6 +1073,13 @@ class ShortcutSettingsComposeDialog private constructor(
                 "fullscreenStretched",
                 if (state.fullscreenStretched.value) "1" else "0",
                 if (container.isFullscreenStretched) "1" else "0"
+            )
+
+            // Use UnixLibs
+            hasContainerOverride = hasContainerOverride or saveOverride(
+                "useUnixLibs",
+                if (state.useUnixLibs.value) "1" else "0",
+                if (container.isUseUnixLibs) "1" else "0"
             )
 
             // Win components
@@ -1815,13 +1826,16 @@ class ShortcutSettingsComposeDialog private constructor(
         val bcnEmulation = state.gfxBcnEmulationEntries.value.getOrElse(state.gfxSelectedBcnEmulation.intValue) { "auto" }
         val bcnEmulationType = state.gfxBcnEmulationTypeEntries.value.getOrElse(state.gfxSelectedBcnEmulationType.intValue) { "compute" }
         val bcnEmulationCache = state.gfxBcnEmulationCacheEntries.value.getOrElse(state.gfxSelectedBcnEmulationCache.intValue) { "0" }
+        val transcoder = state.gfxTranscoderEntries.value.getOrElse(state.gfxSelectedTranscoder.intValue) { "cpu" }
+        val quality = state.gfxQualityEntries.value.getOrElse(state.gfxSelectedQuality.intValue) { "low" }
 
         return "vulkanVersion=$vulkanVersion;version=$version;blacklistedExtensions=$blacklisted;" +
                 "maxDeviceMemory=$maxDeviceMemory;presentMode=$presentMode;syncFrame=$syncFrame;" +
                 "disablePresentWait=$disablePresentWait;resourceType=$resourceType;" +
                 "bcnEmulation=$bcnEmulation;bcnEmulationType=$bcnEmulationType;" +
                 "bcnEmulationCache=$bcnEmulationCache;gpuName=$gpuName;" +
-                "compositorPresentMode=$compositorPresentMode"
+                "compositorPresentMode=$compositorPresentMode;" +
+                "transcoder=$transcoder;quality=$quality"
     }
 
     private fun buildDxvkConfigFromState(): String {
@@ -1861,6 +1875,8 @@ class ShortcutSettingsComposeDialog private constructor(
         state.gfxBcnEmulationEntries.value = context.resources.getStringArray(R.array.bcn_emulation_entries).toList()
         state.gfxBcnEmulationTypeEntries.value = context.resources.getStringArray(R.array.bcn_emulation_type_entries).toList()
         state.gfxBcnEmulationCacheEntries.value = context.resources.getStringArray(R.array.bcn_emulation_cache_entries).toList()
+        state.gfxTranscoderEntries.value = context.resources.getStringArray(R.array.wrapper_transcoder_entries).toList()
+        state.gfxQualityEntries.value = context.resources.getStringArray(R.array.wrapper_quality_entries).toList()
 
         val gpuNames = mutableListOf("Device")
         try {
@@ -1888,6 +1904,8 @@ class ShortcutSettingsComposeDialog private constructor(
         selectByValue(state.gfxBcnEmulationEntries.value, config["bcnEmulation"] ?: "none", state.gfxSelectedBcnEmulation)
         selectByValue(state.gfxBcnEmulationTypeEntries.value, config["bcnEmulationType"] ?: "compute", state.gfxSelectedBcnEmulationType)
         selectByValue(state.gfxBcnEmulationCacheEntries.value, config["bcnEmulationCache"] ?: "0", state.gfxSelectedBcnEmulationCache)
+        selectByValue(state.gfxTranscoderEntries.value, config["transcoder"] ?: "cpu", state.gfxSelectedTranscoder)
+        selectByValue(state.gfxQualityEntries.value, config["quality"] ?: "low", state.gfxSelectedQuality)
 
         state.gfxSyncFrame.value = config["syncFrame"] == "1"
         state.gfxDisablePresentWait.value = config["disablePresentWait"] == "1"
@@ -2160,6 +2178,7 @@ class ShortcutSettingsComposeDialog private constructor(
 
         state.lcAll.value = container.getLC_ALL()
         state.fullscreenStretched.value = container.isFullscreenStretched
+        state.useUnixLibs.value = container.isUseUnixLibs
 
         val startupEntries = state.startupSelectionEntries.value
         state.selectedStartupSelection.intValue = container.getStartupSelection().toInt()

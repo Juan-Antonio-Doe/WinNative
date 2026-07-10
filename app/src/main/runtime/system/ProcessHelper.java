@@ -243,7 +243,6 @@ public abstract class ProcessHelper {
     return false;
   }
 
-  // Make the OS never OOM-kill the paused process if possible.
   public static void protectAllWineProcesses() {
     ArrayList<String> processes = listRunningWineProcesses();
     for (String process : processes) {
@@ -695,26 +694,11 @@ public abstract class ProcessHelper {
 
   private static String readProcCmdline(File proc, String pid) {
     try (FileInputStream fr = new FileInputStream(proc + "/" + pid + "/cmdline")) {
-      // readAllBytes() requires API level 33, otherwise, the code will crash
-      byte[] bytes;
-      if (android.os.Build.VERSION.SDK_INT >= 33) {
-        bytes = fr.readAllBytes();
-      }
-      else {
-        // Alternative for compatibility
-        try (ByteArrayOutputStream buffer = new ByteArrayOutputStream()) {
-          byte[] data = new byte[4096];
-          int nRead;
-          while ((nRead = fr.read(data)) != -1) {
-            buffer.write(data, 0, nRead);
-          }
-          bytes = buffer.toByteArray();
-        } catch (IOException e) {
-          Log.e(TAG, "Error reading cmdline (API level < 33)", e);
-          return "";
-        }
-      }
-
+      ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+      byte[] data = new byte[8192];
+      int nRead;
+      while ((nRead = fr.read(data)) != -1) buffer.write(data, 0, nRead);
+      byte[] bytes = buffer.toByteArray();
       return new String(bytes, StandardCharsets.UTF_8).replace('\0', ' ');
     } catch (IOException e) {
       return "";

@@ -251,6 +251,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private boolean controllerAutoHidden = false;
     private boolean userOverrodeAutoHide = false;
     private XEnvironment environment;
+    private com.winlator.cmod.runtime.display.environment.AudioFocusHandler audioFocusHandler;
     private ComposeView displayHostComposeView;
     private FrameLayout xServerDisplayFrame;
     private ContainerManager containerManager;
@@ -395,7 +396,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private boolean hudBackgroundAlphaDecoupled = false;
     private float hudBackgroundTransparency = 1.0f;
     private float hudScale = 1.0f;
-    private boolean[] hudElements = new boolean[]{true, true, true, true, true, true, true, true};
+    private boolean[] hudElements = new boolean[]{true, true, true, true, true, true, true, true, false};
     private boolean dualSeriesBattery = false;
     private boolean frametimeNumericMode = false;
     private boolean hudCardExpanded = false;
@@ -675,7 +676,11 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         Runnable applyRefresh = () -> {
             if (isFinishing() || isDestroyed()) return;
 
-            RefreshRateUtils.applyPreferredRefreshRate(this, getRefreshRateOverride(), runtimeFpsLimit);
+            float hz = RefreshRateUtils.applyPreferredRefreshRate(this, getRefreshRateOverride(), runtimeFpsLimit);
+            if (xServer != null) {
+                xServer.getFramePaceClock().setDisplayRefreshHz(hz);
+                xServer.getFramePaceClock().setCapActive(runtimeFpsLimit > 0);
+            }
         };
 
         if (Looper.myLooper() == Looper.getMainLooper()) {
@@ -722,6 +727,11 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     private void handleDisplayCapabilitiesChanged() {
         if (isFinishing() || isDestroyed()) return;
+
+        // Keep the pacer's refresh rate current across seamless mode switches that don't cross the limit.
+        if (xServer != null) {
+            xServer.getFramePaceClock().setDisplayRefreshHz(RefreshRateUtils.getActiveRefreshRate(this));
+        }
 
         int maxRate = RefreshRateUtils.getMaxSupportedRefreshRate(this);
         boolean maxChanged = maxRate != lastKnownMaxRefreshRate;
@@ -1078,11 +1088,17 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         GuestProgramLauncherComponent.ensureImageFsNativeLibrary(this, imageFs, "libfakeinput.so");
         GuestProgramLauncherComponent.ensureImageFsNativeLibrary(this, imageFs, "libandroid-sysvshm.so");
         File devInputDir = new File(imageFs.getRootDir(), "dev/input");
+        boolean reattachingLiveSession = SessionKeepAliveService.isSessionActive()
+                && SessionKeepAliveService.getActiveEnvironment() != null
+                && SessionKeepAliveService.getActiveXServer() != null;
         if (devInputDir.exists() || devInputDir.mkdirs()) {
-            for (int i = 0; i < 4; i++) {
-                File eventFile = new File(devInputDir, "event" + i);
-                if (eventFile.exists()) {
-                    eventFile.delete();
+            // On reattach the running guest still holds these nodes; deleting them breaks its live input mapping.
+            if (!reattachingLiveSession) {
+                for (int i = 0; i < 4; i++) {
+                    File eventFile = new File(devInputDir, "event" + i);
+                    if (eventFile.exists()) {
+                        eventFile.delete();
+                    }
                 }
             }
         }
@@ -2335,6 +2351,15 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         };
     }
 
+    private void ensureAudioFocusHandler() {
+        if (audioFocusHandler != null) return;
+        audioFocusHandler =
+                new com.winlator.cmod.runtime.display.environment.AudioFocusHandler(
+                        this,
+                        () -> { if (environment != null) environment.onPause(); },
+                        () -> { if (environment != null) environment.onResume(); });
+    }
+
     @Override
     public void onResume() {
         super.onResume();
@@ -2347,6 +2372,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         if (!cleaningUp && environment != null) {
             xServerView.onResume();
             environment.onResume();
+            ensureAudioFocusHandler();
+            if (audioFocusHandler != null) audioFocusHandler.request();
         }
 
         if (inputControlsView != null && touchpadView != null) {
@@ -3784,6 +3811,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             externalDisplayController.release();
             externalDisplayController = null;
         }
+        if (audioFocusHandler != null) {
+            audioFocusHandler.release();
+            audioFocusHandler = null;
+        }
         if (isDependencyInstall) {
             com.winlator.cmod.runtime.content.component.DependencyInstallBridge.complete(dependencyExitStatus);
         }
@@ -4890,6 +4921,9 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                         @Override
                         public void onDrawerOpened() {
                             releasePointerCapture();
+                            if (winHandler != null) {
+                                winHandler.neutralizeControllers();
+                            }
                             renderDrawerMenu();
                             if (drawerStateHolder != null) {
                                 drawerStateHolder.resetMenuNav();
@@ -5345,6 +5379,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 hudElements[5] = obj.optBoolean("showBattery", legacyBattTemp);
                 hudElements[6] = obj.optBoolean("showTemp", legacyBattTemp);
                 hudElements[7] = obj.optBoolean("showGraph", true);
+                hudElements[8] = obj.optBoolean("showCpuTemp", false);
             } catch (JSONException e) {
                 Log.e("XServerDisplayActivity", "Failed to load HUD settings", e);
             }
@@ -5368,6 +5403,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             obj.put("showBattery", hudElements[5]);
             obj.put("showTemp", hudElements[6]);
             obj.put("showGraph", hudElements[7]);
+            obj.put("showCpuTemp", hudElements[8]);
             container.putExtra("hudSettings", obj.toString());
             container.saveData();
         } catch (JSONException e) {
@@ -6467,8 +6503,14 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 this.environment.setContext(this);
                 this.reusingSession = true;
 
+                // Free the old handler's socket (keep its writers/rings) and mark the fresh one initialized so the guest's input keeps flowing.
+                WinHandler previousWinHandler = this.xServer.getWinHandler();
+                if (previousWinHandler != null && previousWinHandler != winHandler) {
+                    previousWinHandler.stopForReattach();
+                }
                 this.xServer.setWinHandler(winHandler);
-                
+                winHandler.markSessionInitialized();
+
                 this.guestProgramLauncherComponent = environment.getComponent(GuestProgramLauncherComponent.class);
                 return;
             }
@@ -7397,24 +7439,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     }
 
     private void persistSelectedProfile(ControlsProfile profile) {
-        SharedPreferences.Editor editor = preferences.edit();
-        if (profile != null) {
-            int selectedProfileIndex = -1;
-            ArrayList<ControlsProfile> profiles = inputControlsManager.getProfiles(true);
-            for (int i = 0; i < profiles.size(); i++) {
-                ControlsProfile storedProfile = profiles.get(i);
-                if (storedProfile != null && storedProfile.id == profile.id) {
-                    selectedProfileIndex = i;
-                    break;
-                }
-            }
-            editor.putInt("selected_profile_id", profile.id);
-            editor.putInt("selected_profile_index", selectedProfileIndex);
-        } else {
-            editor.remove("selected_profile_id");
-            editor.putInt("selected_profile_index", -1);
+        if (shortcut == null) return;
+        String newVal = profile != null ? String.valueOf(profile.id) : "";
+        if (!newVal.equals(shortcut.getExtra("controlsProfile", ""))) {
+            shortcut.putExtra("controlsProfile", newVal.isEmpty() ? null : newVal);
+            shortcut.saveData();
         }
-        editor.apply();
     }
 
     private void pushSelectedGestureConfig() {
@@ -7469,16 +7499,14 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     }
 
     private ControlsProfile resolvePreferredStartupProfile() {
-        ArrayList<ControlsProfile> profiles = inputControlsManager.getProfiles(true);
-        int selectedProfileId = preferences.getInt("selected_profile_id", 0);
-        int selectedProfileIndex = preferences.getInt("selected_profile_index", -1);
-        ControlsProfile selectedProfile =
-                selectedProfileId != 0 ? inputControlsManager.getProfile(selectedProfileId) : null;
-
-        if (selectedProfile == null
-                && selectedProfileIndex >= 0
-                && selectedProfileIndex < profiles.size()) {
-            selectedProfile = profiles.get(selectedProfileIndex);
+        if (shortcut == null) return null;
+        String cp = shortcut.getExtra("controlsProfile", "");
+        if (cp.isEmpty()) return null;
+        ControlsProfile selectedProfile;
+        try {
+            selectedProfile = inputControlsManager.getProfile(Integer.parseInt(cp));
+        } catch (NumberFormatException e) {
+            return null;
         }
 
         if (selectedProfile != null) {
@@ -7608,15 +7636,35 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             }
         }
 
+        // FFmpeg 8 libs for Wine's winedmo media path (arm64ec native Wine only; these
+        // aarch64 libs are inert under x86_64/box64). Extract into usr/lib when absent
+        // so existing containers get it without a full imagefs reinstall.
+        if (wineInfo != null && wineInfo.isArm64EC()
+                && !new File(rootDir, "usr/lib/libavcodec.so.62").exists()) {
+            try {
+                TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "ffmpeg8.tzst", rootDir);
+            } catch (Exception e) {
+                Log.w("XServerDisplayActivity", "ffmpeg8.tzst extraction failed", e);
+            }
+        }
+
         boolean wantLeegao = "wrapper-leegao".equals(graphicsDriver);
+        boolean wantGamenative = "wrapper-gamenative".equals(graphicsDriver);
         File leegaoMarker = new File(rootDir, "usr/lib/.wrapper_leegao");
+        File gamenativeMarker = new File(rootDir, "usr/lib/.wrapper_gamenative");
         if (wantLeegao) {
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper-leegao.tzst", rootDir);
             try { leegaoMarker.createNewFile(); } catch (IOException ignored) {}
-        } else if (leegaoMarker.exists()) {
+            gamenativeMarker.delete();
+        } else if (wantGamenative) {
+            TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper-gamenative.tzst", rootDir);
+            try { gamenativeMarker.createNewFile(); } catch (IOException ignored) {}
+            leegaoMarker.delete();
+        } else if (leegaoMarker.exists() || gamenativeMarker.exists()) {
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper" + ".tzst", rootDir);
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "layers" + ".tzst", rootDir);
             leegaoMarker.delete();
+            gamenativeMarker.delete();
         }
 
         if (adrenoToolsDriverId != null && !adrenoToolsDriverId.isEmpty()
@@ -7699,16 +7747,20 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         String bcnEmulation = graphicsDriverConfig.get("bcnEmulation");
         String bcnEmulationType = graphicsDriverConfig.get("bcnEmulationType");
 
+        int gpuVendorId = GPUInformation.getVendorID(null, null);
+        // BCn compute shaders are unsupported on Adreno and crash on Xclipse with this wrapper
+        boolean excludeBcnCompute = gpuVendorId == 20803 || (wantGamenative && gpuVendorId == 0x144D);
+
         switch (bcnEmulation) {
             case "auto" -> {
-                if ("compute".equals(bcnEmulationType) && GPUInformation.getVendorID(null, null) != 20803) {
+                if ("compute".equals(bcnEmulationType) && !excludeBcnCompute) {
                     envVars.put("ENABLE_BCN_COMPUTE", "1");
                     envVars.put("BCN_COMPUTE_AUTO", "1");
                 }
                 envVars.put("WRAPPER_EMULATE_BCN", "3");
             }
             case "full" -> {
-                if ("compute".equals(bcnEmulationType) && GPUInformation.getVendorID(null, null) != 20803) {
+                if ("compute".equals(bcnEmulationType) && !excludeBcnCompute) {
                     envVars.put("ENABLE_BCN_COMPUTE", "1");
                     envVars.put("BCN_COMPUTE_AUTO", "0");
                 }
@@ -7716,6 +7768,13 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             }
             case "none" -> envVars.put("WRAPPER_EMULATE_BCN", "0");
             default -> envVars.put("WRAPPER_EMULATE_BCN", "1");
+        }
+
+        if (wantGamenative) {
+            String transcoder = graphicsDriverConfig.get("transcoder");
+            envVars.put("WRAPPER_BCN_GPU", "gpu".equalsIgnoreCase(transcoder) ? "1" : "0");
+            String wrapperQuality = graphicsDriverConfig.get("quality");
+            envVars.put("WRAPPER_ASTC_BLOCK", "high".equalsIgnoreCase(wrapperQuality) ? "4x4" : "8x8");
         }
 
         String bcnEmulationCache = graphicsDriverConfig.get("bcnEmulationCache");

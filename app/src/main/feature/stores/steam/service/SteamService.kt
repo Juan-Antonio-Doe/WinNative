@@ -6946,6 +6946,11 @@ class SteamService : Service() {
             instance?.handleAppBackgrounded()
         }
 
+        @JvmStatic
+        fun ensureHealthySession() {
+            instance?.ensureHealthySessionImpl()
+        }
+
         fun stop() {
             instance?.let { steamInstance ->
                 if (!isStopping) {
@@ -7718,7 +7723,21 @@ class SteamService : Service() {
             }
     }
 
-    /** App returned to the foreground: wake the Steam session if suspended for background — reconnect and let the logon observer restart the PICS loops via onWnLoggedOn. */
+    private fun ensureHealthySessionImpl() {
+        if (!isRunning || isStopping || isLoggingOut) return
+        if (PrefManager.refreshToken.isBlank()) return
+        if (PluviaApp.isGameSessionActive()) return
+        if (suspendedForBionic) {
+            Timber.w("ensureHealthySession: clearing stale Bionic hand-off (no game running)")
+            bionicHandoffReleaseImpl()
+            return
+        }
+        if (wnSession?.state() == 3) return
+        Timber.i("ensureHealthySession: session not logged on — re-driving connectAndLogon")
+        retryAttempt = 0
+        connectAndLogon()
+    }
+
     private fun handleAppForegrounded() {
         appInForeground = true
         // Cancel any pending suspend timer — the app is back, so the session must stay up regardless of how long it was minimized.
@@ -8662,10 +8681,8 @@ class SteamService : Service() {
     private fun continuousPICSChangesChecker(): Job =
         scope.launch {
             while (isActive && isLoggedIn) {
-                // Initial delay before each check
-                delay(60.seconds)
-
                 PICSChangesCheck()
+                delay(60.seconds)
             }
         }
 
