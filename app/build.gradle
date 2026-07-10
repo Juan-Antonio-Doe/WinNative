@@ -161,18 +161,18 @@ android {
     flavorDimensions "branding"
 
     productFlavors {
-        /*standard {
+        standard {
             dimension "branding"
-            applicationId "com.winnative.test"
-        }*/
-        debugTest1 {
-            dimension "branding"
-            applicationId "com.winnative.test1"
+            applicationId "com.winnative.cmod"
         }
-        /*debugTest2 {
+        ludashi {
             dimension "branding"
-            applicationId "com.winnative.test2"
-        }*/
+            applicationId "com.ludashi.benchmark"
+        }
+        pubg {
+            dimension "branding"
+            applicationId "com.tencent.ig"
+        }
     }
 
     ndkVersion '27.3.13750724'
