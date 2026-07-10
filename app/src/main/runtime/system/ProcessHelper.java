@@ -246,19 +246,8 @@ public abstract class ProcessHelper {
   // Make the OS never OOM-kill the paused process if possible.
   public static void protectAllWineProcesses() {
     ArrayList<String> processes = listRunningWineProcesses();
-//    String actualAdj = "";
     for (String process : processes) {
-      /*actualAdj = readProcFile("/proc/" + process + "/oom_score_adj");
-      LogManager.log(OOM_TAG, "pid=" + process +
-              " beforeSet=" + (actualAdj != null ? actualAdj.trim() : "unreadable"));*/
-
       setOomScoreAdj(Integer.parseInt(process), OOM_SCORE_ADJ_PROTECT);
-
-      // Check if the OOM Score is doing something, actually.
-      /*actualAdj = readProcFile("/proc/" + process + "/oom_score_adj");
-      LogManager.log(OOM_TAG,
-              "pid=" + process + " requested=" + OOM_SCORE_ADJ_PROTECT
-                      + " actual=" + (actualAdj != null ? actualAdj.trim() : "unreadable"));*/
     }
   }
 

@@ -1,11 +1,7 @@
 package com.winlator.cmod.runtime.system;
 
-import android.app.ActivityManager;
 import android.app.KeyguardManager;
 import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.app.Service;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -21,10 +17,8 @@ import android.os.PowerManager;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.core.app.NotificationCompat;
 import androidx.preference.PreferenceManager;
 
-import com.winlator.cmod.R;
 import com.winlator.cmod.app.shell.UnifiedActivity;
 import com.winlator.cmod.feature.stores.steam.utils.PrefManager;
 import com.winlator.cmod.runtime.display.XServerDisplayActivity;
@@ -58,11 +52,9 @@ public class SessionKeepAliveService extends Service {
 
     private static volatile SessionKeepAliveService instance;
     private static final String TAG = "SessionKeepAlive";
-    private static final String EXTRA_TAG = "tag";
+    private static final String EXTRA_TAG = "SessionKeepAlive_debugTag";
     private static final String ACTION_ENSURE_FOREGROUND =
             "com.winlator.cmod.action.ENSURE_FOREGROUND";
-
-    private static final String CHANNEL_ID = "winnative_session_keepalive";
 
     private static final String ACTION_SESSION_START = "com.winlator.cmod.action.SESSION_START";
     private static final String ACTION_SESSION_STOP = "com.winlator.cmod.action.SESSION_STOP";
@@ -70,11 +62,8 @@ public class SessionKeepAliveService extends Service {
     private static final String ACTION_SESSION_RESUME = "com.winlator.cmod.action.SESSION_RESUME";
     private static final String ACTION_DL_START = "com.winlator.cmod.action.SESSION_DL_START";
     private static final String ACTION_DL_STOP = "com.winlator.cmod.action.SESSION_DL_STOP";
-    private static final String ACTION_UPDATE_COMPONENT = "com.winlator.cmod.action.UPDATE_COMPONENT";
-    private static final String ACTION_REMOVE_COMPONENT = "com.winlator.cmod.action.REMOVE_COMPONENT";
 
     public static final String COMPONENT_STEAM = "Steam";
-//    public static final String COMPONENT_STEAM_FRIENDS = "Steam Friends";
     public static final String COMPONENT_EPIC = "Epic";
     public static final String COMPONENT_GOG = "GOG";
 
@@ -115,26 +104,6 @@ public class SessionKeepAliveService extends Service {
 
     // Tracks active components and their notification messages
     private static final Map<String, String> activeComponents = new ConcurrentHashMap<>();
-    // Component names constants
-
-
-    private final Handler protectionHandler = new Handler(Looper.getMainLooper());
-    private final Runnable protectionRunnable = new Runnable() {
-        @Override
-        public void run() {
-            if (!sessionActive.get() || !isContainerPaused) return;
-            Timber.tag(TAG).d("Running periodic HEARTBEAT protection for a container session");
-            new Thread(() -> {
-                try {
-//                        ProcessHelper.protectAllWineProcesses();
-                    LogManager.log(TAG, "Heartbeat: Keeping container alive...", getApplicationContext());
-                } catch (Exception e) {
-                    LogManager.logE(TAG, "Periodic HEARTBEAT protection sweep failed", e, getApplicationContext());
-                }
-            }, "SessionOomProtection").start();
-            protectionHandler.postDelayed(this, 2 * 60 * 1000L); // Every 2 minutes
-        }
-    };
 
     // ===================================================================
     // Container / game session lifecycle
@@ -158,7 +127,6 @@ public class SessionKeepAliveService extends Service {
         isActivityVisible = true;
         LogManager.log(TAG, "startSession", ctx);
         updateForegroundState(ctx);
-//        sendCommand(ctx, ACTION_SESSION_START, null);
     }
 
     public static void onPauseSession(Context ctx) {
@@ -170,14 +138,12 @@ public class SessionKeepAliveService extends Service {
         isContainerPaused = true;
         isActivityVisible = false;
         LogManager.log(TAG, "onPauseSession", ctx);
-//        startProtectionHeartbeat();
         if (instance != null) {
             instance.acquireWakeLock();
             instance.runOomSweep();
             instance.startHeartbeat();
         }
         updateForegroundState(ctx);
-//        sendCommand(ctx, ACTION_SESSION_PAUSE, null);
     }
 
     public static void onResumeSession(Context ctx) {
@@ -189,13 +155,11 @@ public class SessionKeepAliveService extends Service {
         isContainerPaused = false;
         isActivityVisible = true;
         LogManager.log(TAG, "onResumeSession", ctx);
-        // stopProtectionHeartbeat();
         if (instance != null) {
             instance.stopHeartbeat();
             instance.releaseWakeLock();
         }
         updateForegroundState(ctx);
-//        sendCommand(ctx, ACTION_SESSION_RESUME, null);
     }
 
     public static void stopSession(Context ctx) {
@@ -203,7 +167,6 @@ public class SessionKeepAliveService extends Service {
         if (!sessionActive.compareAndSet(true, false)) return;
         isContainerPaused = false;
 //        LogManager.log(ctx, TAG, "stopSession");
-        // stopProtectionHeartbeat();
         if (instance != null) {
             instance.stopHeartbeat();
             instance.releaseWakeLock();
@@ -211,25 +174,10 @@ public class SessionKeepAliveService extends Service {
         teardownEnvironmentAsync();
         updateForegroundState(ctx);
         LogManager.log(TAG, "Stopping game session in keep-alive service. Request by: " + Objects.requireNonNull(ctx.getClass().getName()), ctx);
-//        sendCommand(ctx, ACTION_SESSION_STOP, null);
     }
 
     public static boolean isSessionActive() {
         return sessionActive.get();
-    }
-
-    // Possibly, this method is useless because it does not restart
-    // in the background unless another class calls this class.
-    private static void startProtectionHeartbeat() {
-        SessionKeepAliveService svc = instance;
-        if (svc == null) return;
-        svc.protectionHandler.removeCallbacks(svc.protectionRunnable);
-        svc.protectionHandler.post(svc.protectionRunnable);
-    }
-
-    private static void stopProtectionHeartbeat() {
-        SessionKeepAliveService svc = instance;
-        if (svc != null) svc.protectionHandler.removeCallbacks(svc.protectionRunnable);
     }
 
     // Capture-then-null before handing off, so a second stopSession() call,
@@ -276,50 +224,12 @@ public class SessionKeepAliveService extends Service {
         updateForegroundState(ctx);
     }
 
-    /*public static void startComponent(Context context, String componentName, String message) {
-        activeComponents.put(componentName, message != null ? message : "");
-
-        Intent intent = new Intent(context, SessionKeepAliveService.class);
-        intent.setAction(ACTION_UPDATE_COMPONENT);
-        intent.putExtra("component_name", componentName);
-        intent.putExtra("component_message", message);
-
-        try {
-            context.startService(intent);
-        } catch (Exception e) {
-            // SILENT CATCH: This prevents the app from crashing.
-            // If it fails, it means the app is in background.
-            // The service will start correctly next time the app goes to foreground.
-            String logMsg = "BackgroundServiceStartNotAllowed: Could not start master service for " + componentName;
-            Log.w(TAG, logMsg);
-            LogManager.logWarn(context, TAG, logMsg, e);
-        }
-    }*/
-
     public static void stopComponent(Context ctx, String componentName) {
         if (ctx == null || componentName == null) return;
         if (activeComponents.remove(componentName) == null) return;
         LogManager.log(TAG, "stopComponent: " + componentName, ctx);
         updateForegroundState(ctx);
     }
-
-    /*public static void stopComponent(Context context, String componentName) {
-        // 1. Update data
-        activeComponents.remove(componentName);
-
-        // 2. ONLY send the intent if the service is ALREADY running.
-        // This avoids starting the service just to stop a component.
-        if (serviceRunning.get()) {
-            Intent intent = new Intent(context, SessionKeepAliveService.class);
-            intent.setAction(ACTION_REMOVE_COMPONENT);
-            intent.putExtra("component_name", componentName);
-            try {
-                context.startService(intent);
-            } catch (Exception e) {
-                Log.w(TAG, "Failed to send stop component to master service (App in background)");
-            }
-        }
-    }*/
 
     public static boolean isAppInBackground()  { return isAppInBackground;  }
     public static boolean isDeviceLocked()     { return isScreenLocked;      }
@@ -340,7 +250,6 @@ public class SessionKeepAliveService extends Service {
         if (added) {
             Timber.tag(TAG).d("startDownload: %s", key);
             updateForegroundState(ctx);
-//            sendCommand(ctx, ACTION_DL_START, key);
         }
     }
 
@@ -352,7 +261,6 @@ public class SessionKeepAliveService extends Service {
         if (removed) {
             Timber.tag(TAG).d("stopDownload: %s", key);
             updateForegroundState(ctx);
-//            sendCommand(ctx, ACTION_DL_STOP, key);
         }
     }
 
@@ -363,11 +271,6 @@ public class SessionKeepAliveService extends Service {
     private static boolean hasReason() {
         return sessionActive.get() || !activeDownloads.isEmpty() || !activeComponents.isEmpty() ||
                 (isAppVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit());
-
-        /*if (sessionActive.get()) return true;
-        synchronized (activeDownloads) {
-            return !activeDownloads.isEmpty();
-        }*/
     }
 
     // Single chokepoint for every caller (session, components, downloads).
@@ -552,214 +455,8 @@ public class SessionKeepAliveService extends Service {
         // Stop the service and cleanup
         sessionActive.set(false);
         isContainerPaused = false;
-        // stopProtectionHeartbeat();
         stopForegroundCompat();
         stopSelf();
-    }
-
-    private static void sendCommand(Context ctx, String action, @Nullable String tag) {
-        Context app = ctx.getApplicationContext();
-        Intent intent = new Intent(app, SessionKeepAliveService.class);
-        intent.setAction(action);
-        if (tag != null) intent.putExtra(EXTRA_TAG, tag);
-        try {
-            if (ACTION_SESSION_START.equals(action) || ACTION_DL_START.equals(action)) {
-                app.startForegroundService(intent);
-            } else {
-                app.startService(intent);
-            }
-        } catch (Exception e) {
-            // If starting the service fails, try starting it as a foreground service as a fallback.
-            app.startForegroundService(intent);
-            Timber.tag(TAG).w(e, "Failed to send command %s", action);
-        }
-    }
-
-/*    @Override
-    public void onCreate() {
-        LogManager.logLastExitReasons(getApplicationContext());
-
-        super.onCreate();
-//        generateNotificationId();
-        instance = this;
-
-        // Initialize the helper using the application context
-        notificationHelper = new NotificationHelper(getApplicationContext());
-        notificationHelper.createNotificationChannel(); // Replace ensureChannel() method.
-
-        // Keep the CPU alive to prevent OS from killing the process when the screen is off.
-        *//*PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        if (pm != null) {
-            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WinNative:KeepAlive");
-        }*//*
-
-        // Keep the Wi-Fi alive to prevent network interruptions. Useful for games that stream assets from the network or have online features.
-        *//*WifiManager wm = (WifiManager) getSystemService(WIFI_SERVICE);
-        if (wm != null) {
-            int lockType = WifiManager.WIFI_MODE_FULL;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                lockType = WifiManager.WIFI_MODE_FULL_HIGH_PERF;
-            }
-            wifiLock = wm.createWifiLock(lockType, "WinNative:WifiKeepAlive");
-        }*//*
-
-//        ensureChannel();
-    }*/
-
-    /*@Override
-    public int onStartCommand(Intent intent, int flags, int startId) {
-        String action = intent != null ? intent.getAction() : null;
-
-        if (ACTION_SESSION_START.equals(action)) {
-            sessionActive.set(true);
-            isContainerPaused = false;
-        } else if (ACTION_SESSION_PAUSE.equals(action)) {
-            isContainerPaused = true;
-            protectionHandler.removeCallbacks(protectionRunnable);
-            protectionHandler.post(protectionRunnable);
-        } else if (ACTION_SESSION_RESUME.equals(action)) {
-            isContainerPaused = false;
-            protectionHandler.removeCallbacks(protectionRunnable);
-        } else if (ACTION_UPDATE_COMPONENT.equals(action)) {
-            String name = intent.getStringExtra("component_name");
-            String msg = intent.getStringExtra("component_message");
-            if (name != null) activeComponents.put(name, msg);
-        } else if (ACTION_REMOVE_COMPONENT.equals(action)) {
-            String name = intent.getStringExtra("component_name");
-            if (name != null) activeComponents.remove(name);
-        } else if (ACTION_SESSION_STOP.equals(action)) {
-            sessionActive.set(false);
-            isContainerPaused = false;
-            protectionHandler.removeCallbacks(protectionRunnable);
-            if (activeEnvironment != null) {
-                final XEnvironment env = activeEnvironment;
-                activeEnvironment = null;
-                activeXServer = null;
-                new Thread(() -> {
-                    try {
-                        env.stopEnvironmentComponents();
-                    } catch (Exception e) {
-                        LogManager.logError(this, TAG, "Failed to stop environment components during session stop", e);
-                    }
-                }, "XServerTeardown").start();
-            }
-        }
-
-        // Ensure wake lock, wifi lock and OOM adj are correct based on current state
-        *//*if (hasReason()) {
-//            if (wakeLock != null && !wakeLock.isHeld()) wakeLock.acquire();
-//            if (wifiLock != null && !wifiLock.isHeld()) wifiLock.acquire();
-//            ProcessHelper.setOomScoreAdj(android.os.Process.myPid(), -1000);
-            *//**//*new Thread(() -> {
-                try {
-                    ProcessHelper.protectAllWineProcesses();
-                } catch (Exception e) {
-                    Log.e(TAG, "Failed to run initial OOM protection", e);
-                }
-            }, "InitialWineOomProtection").start();*//**//*
-        } else {
-//            if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-//            if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
-//            ProcessHelper.setOomScoreAdj(android.os.Process.myPid(), 0);
-        }*//*
-
-        if (hasReason()) {
-            // Always promote to foreground first so Android does not consider
-            // the start a violation (and so the notification reflects current
-            // reasons), even if the command immediately tells us to stop.
-            ensureForeground();
-            serviceRunning.set(true);
-//            Log.d(TAG, "Service keep alive is running...");
-        }
-        else {
-            LogManager.log(this, TAG, "No active reason; stopping keep-alive service");
-            stopForegroundCompat();
-            stopSelf();
-            serviceRunning.set(false);
-        }
-        return START_NOT_STICKY;
-    }*/
-
-    /*private void ensureForeground() {
-//        Notification n = buildNotification();
-
-        boolean containerActive = sessionActive.get();
-        // Only show Exit button if container is running AND app is in background
-        boolean showExit = containerActive && !isActivityVisible;
-
-        // Determine target activity: Game screen if active, else Main menu
-        Class<?> targetActivity = containerActive ? XServerDisplayActivity.class : UnifiedActivity.class;
-
-        Notification n = notificationHelper.createForegroundNotification(
-                getNotificationContent(),
-                "WinNative", // Title
-                SessionKeepAliveService.class, // Service class for the 'Exit' action
-                showExit ? ACTION_SESSION_STOP : null, // Exit only for backgrounded container
-                targetActivity // Activity class for the 'Open' (notification tap) action
-        );
-        notificationId = notificationHelper.generateNotificationId(this, NOTIFICATION_ID_NAME);
-
-        try {
-            // Only call startForeground the first time. Use notify() for updates.
-            if (!serviceRunning.get()) {
-                *//*if (Build.VERSION.SDK_INT >= 34) {
-                startForeground(notificationId, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-                }
-                else *//*if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    startForeground(notificationId, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-                }
-                else {
-                    startForeground(notificationId, n);
-                }
-            }
-            else {
-                // Standard notification update
-                notificationHelper.notify(notificationId, n);
-            }
-
-        } catch (Exception e) {
-            LogManager.logWarn(this, TAG, "Failed to startForeground", e);
-        }
-    }*/
-
-    public void ensureChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (nm == null) return;
-        if (nm.getNotificationChannel(CHANNEL_ID) != null) return;
-        NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID,
-                "WinNative session keep-alive",
-                NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription(
-                "Keeps WinNative running in the background so a paused game session or "
-                        + "an active component download is not interrupted by screen lock.");
-        channel.setShowBadge(false);
-        channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC);
-        nm.createNotificationChannel(channel);
-    }
-
-    public Notification buildNotification() {
-        String content = getNotificationContent();
-
-        Intent openIntent = new Intent(this, XServerDisplayActivity.class);
-        openIntent.setFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_REORDER_TO_FRONT);
-        PendingIntent contentIntent = PendingIntent.getActivity(
-                this,
-                0,
-                openIntent,
-                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-
-        return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_notification)
-                .setContentTitle("WinNative")
-                .setContentText(content)
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setOngoing(true)
-                .setShowWhen(false)
-                .setContentIntent(contentIntent)
-                .build();
     }
 
     // ===================================================================
@@ -772,15 +469,13 @@ public class SessionKeepAliveService extends Service {
         LogManager.logI(TAG, "Task removed (user swipe). Tearing down session and exiting process.", this);
 
         resetLocalState();
-        // stopProtectionHeartbeat();
 
         performDefensiveCleanupAndExit(this);
     }
 
     @Override
     public void onDestroy() {
-       // stopProtectionHeartbeat();
-//        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
 //        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         stopHeartbeat();
         releaseWakeLock();
@@ -804,12 +499,6 @@ public class SessionKeepAliveService extends Service {
     public IBinder onBind(Intent intent) {
         return null;
     }
-
-    /*public int generateNotificationId() {
-        // Generate a unique ID based on the package name to avoid conflicts with other forks/flavors.
-        String contextKey = getPackageName() + ".winnative.keepAlive";
-        return notificationId = contextKey.hashCode() & 0x7FFFFFFF; // Avoid negative IDs
-    }*/
 
     // ===================================================================
     // Utility methods

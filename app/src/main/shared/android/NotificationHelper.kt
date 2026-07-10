@@ -195,19 +195,6 @@ class NotificationHelper
             "Allows to display WinNative foreground notifications",
             false
         )
-
-        /*val channel =
-            NotificationChannel(
-                CHANNEL_ID,
-                CHANNEL_NAME,
-                NotificationManager.IMPORTANCE_LOW,
-            ).apply {
-                description = "Allows to display WinNative foreground notifications"
-                setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            }
-
-        notificationManager.createNotificationChannel(channel)*/
     }
 
         /**

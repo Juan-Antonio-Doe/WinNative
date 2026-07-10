@@ -149,20 +149,6 @@ object LogManager {
 
     @JvmStatic
     fun getLogsDir(context: Context): File {
-        /*val baseDir = context.getExternalFilesDir(null) ?: context.filesDir
-        val dir = File(baseDir, "logs")
-        if (!dir.exists()) dir.mkdirs()*/
-
-        /*val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-        val currentPath = resolvePathString(prefs.getString("winlator_path_uri", null), SettingsConfig.DEFAULT_WINLATOR_PATH, context)
-
-        val dir = File(currentPath, "logs")
-        if (!dir.exists()) dir.mkdirs()
-
-        Timber.tag(TAG).d("Winlator path: $ctx")
-
-        return dir*/
-
         cachedLogsDir?.let { return it }
         val ctx = resolveContext(context) ?: return File(SettingsConfig.DEFAULT_WINLATOR_PATH, "logs").also {
             // No context available anywhere yet (init() never called and none
@@ -542,20 +528,7 @@ object LogManager {
                 command.add(it)
             }
 
-            // New with custom logcat filter
             eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
-
-            // Old, with hardcoded filter
-            /*eventWatchProcess = Runtime.getRuntime().exec(
-                arrayOf(
-                    "logcat", "-v", "threadtime", "-f", file.absolutePath,
-//                    "ActivityManager:I", "lmkd:I", "OomAdjuster:I", "ActivityTaskManager:I", "Process:I",  // For tracking OS killer.
-                    // For tracking the annoying container-resume shut down bug.
-                    "ActivityManager:I", "Process:I", "XConnectorEpoll:D", "ClientSocket:D", "XClientConnectionHandler:D", "Surface:I", "VkRenderer:I",
-                    "*:S",    // Silence
-//                    "*:D",      // Debug [Note: This filter drastically increases the chances that the container will close upon returning to it]
-                ),
-            )*/
 
             closeProcessStdin(eventWatchProcess)
         } catch (e: Exception) {
