@@ -293,6 +293,9 @@ object LogManager {
     @JvmStatic
     fun getTagFilterMode(): TagFilterMode = cachedTagFilterMode
 
+    @JvmStatic
+    fun getSystemTags(): Set<String> = BASELINE_SYSTEM_TAGS.keys.toSet()
+
     /** Transient only — never written to SharedPreferences. Pass null/blank to clear. */
     @JvmStatic
     fun setManualTextFilter(text: String?) {
@@ -575,8 +578,19 @@ object LogManager {
 
         // System tags — always included in ALL mode; otherwise filtered like app tags.
         when (cachedTagFilterMode) {
-            TagFilterMode.ALL ->
-                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) -> spec.add("$tag:$priority") }
+            TagFilterMode.ALL -> {
+                // In ALL mode, include ALL system tags that haven't been explicitly
+                // deselected. An empty selection means "show everything" (default),
+                // so only suppress a system tag if it was explicitly unchecked.
+                val excluded = BASELINE_SYSTEM_TAGS.keys - selectedBaseline
+                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) ->
+                    if (tag !in excluded || cachedSelectedTags.isEmpty()) {
+                        spec.add("$tag:$priority")
+                    }
+                }
+                spec.add("*:D")
+                excluded.forEach { spec.add("$it:S") }
+            }
             TagFilterMode.INCLUDE ->
                 selectedBaseline.forEach { tag ->
                     spec.add("$tag:${BASELINE_SYSTEM_TAGS[tag]}")

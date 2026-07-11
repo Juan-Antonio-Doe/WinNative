@@ -1006,6 +1006,7 @@ private fun MultiSelectDialog(
     onDismiss: () -> Unit,
     onConfirm: (List<String>) -> Unit,
     extraContent: (@Composable (selected: Set<String>, onToggle: (String) -> Unit) -> Unit)? = null,
+    systemTags: Set<String> = emptySet(),
 ) {
     val selected =
         remember(initiallySelected) {
@@ -1111,6 +1112,7 @@ private fun MultiSelectDialog(
 
                     ChannelGrid(
                         options = options,
+                        systemTags = systemTags,
                         selected = selected.value,
                         gridState = gridState,
                         onViewport = { top, h ->
@@ -1203,6 +1205,7 @@ private fun LogTagFilterDialog(
     MultiSelectDialog(
         title = stringResource(R.string.settings_debug_log_tag_filter_channel),
         options = allOptions,
+        systemTags = remember { LogManager.getSystemTags() },
         initiallySelected = initiallySelected,
         onDismiss = onDismiss,
         onConfirm = { selected -> onConfirm(mode, selected) },
@@ -1366,6 +1369,7 @@ private fun ColumnScope.ChannelGrid(
     gridState: androidx.compose.foundation.lazy.grid.LazyGridState,
     onViewport: (Float, Int) -> Unit,
     onToggle: (String) -> Unit,
+    systemTags: Set<String> = emptySet(),   // new — tags that render in a distinct color
 ) {
     if (options.isEmpty()) {
         Text(
@@ -1390,11 +1394,14 @@ private fun ColumnScope.ChannelGrid(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         itemsIndexed(options) { index, channel ->
+            val isSystem = channel in systemTags
+            val chipAccent = if (isSystem) Color(0xFFFFCC00) else Accent
             SelectableChannelChip(
                 label = channel,
                 isSelected = channel in selected,
                 isEntry = index == 0,
                 onToggle = { onToggle(channel) },
+                tint = chipAccent,
             )
         }
     }
@@ -1406,10 +1413,11 @@ private fun SelectableChannelChip(
     isSelected: Boolean,
     isEntry: Boolean,
     onToggle: () -> Unit,
+    tint: Color = Accent,
 ) {
-    val bg = if (isSelected) Accent.copy(alpha = 0.18f) else IconBoxBg
-    val borderColor = if (isSelected) Accent.copy(alpha = 0.55f) else CardBorder
-    val textColor = if (isSelected) Accent else TextPrimary
+    val bg = if (isSelected) tint.copy(alpha = 0.18f) else IconBoxBg
+    val borderColor = if (isSelected) tint.copy(alpha = 0.55f) else CardBorder
+    val textColor = if (isSelected) tint else TextPrimary
     Box(
         modifier =
             Modifier
