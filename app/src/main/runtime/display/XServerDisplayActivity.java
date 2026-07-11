@@ -3308,6 +3308,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                         SteamExitCloudSync.syncOnExit(
                                 this,
                                 shortcut,
+                                container,
                                 text -> preloaderDialog.showOnUiThread(text),
                                 result ->
                                         callback.onComplete(
