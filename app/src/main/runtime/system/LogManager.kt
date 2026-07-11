@@ -671,12 +671,14 @@ object LogManager {
 
                         try {
                             info.traceInputStream?.use { input ->
+                                val rawTrace = input.bufferedReader().readText()
+                                val summary = summarizeTrace(rawTrace, info.reason)
                                 appendLine(
                                     ctx, CRASH_FILE, "I/$TAG",
                                     "=== Historical $type Detected ===\n" +
                                             "PID: ${info.pid} | Timestamp: ${Date(info.timestamp)}\n" +
                                             "Description: ${info.description}\n" +
-                                            "Trace Output:\n${input.bufferedReader().readText()}\n" +
+                                            "Trace Summary:\n$summary\n" +
                                             "=== End $type Report ==="
                                 )
                             } ?: run {
@@ -731,5 +733,161 @@ object LogManager {
         } catch (e: Exception) {
             Timber.e(e, "Failed to log crash")
         }
+    }
+
+    private fun summarizeTrace(rawTrace: String, reason: Int): String {
+        return when (reason) {
+            ApplicationExitInfo.REASON_ANR -> summarizeAnrTrace(rawTrace)
+            ApplicationExitInfo.REASON_CRASH -> summarizeJavaCrashTrace(rawTrace)
+            ApplicationExitInfo.REASON_CRASH_NATIVE -> summarizeNativeCrashTrace(rawTrace)
+            else -> rawTrace.lines().take(50).joinToString("\n") // unknown: keep first 50 lines
+        }
+    }
+
+    /**
+     * ANR traces contain memory stats, CriticalEventLog boilerplate, and hundreds
+     * of sysTid lines for threads that aren't relevant to the block. Keep only:
+     * - Subject line (the dispatch timeout description)
+     * - Waiting Channels block (which thread is stuck and in what kernel call)
+     * - Any "main" thread or "Binder" thread lines that show who holds the lock
+     */
+    private fun summarizeAnrTrace(raw: String): String {
+        val lines = raw.lines()
+        val out = StringBuilder()
+        var inWaitingChannels = false
+        var inJavaStack = false
+
+        for (line in lines) {
+            when {
+                // Always keep the subject — it describes the actual timeout
+                line.startsWith("Subject:") -> {
+                    out.appendLine(line)
+                }
+                // Start of the waiting-channels block
+                line.contains("----- Waiting Channels:") -> {
+                    inWaitingChannels = true
+                    out.appendLine(line)
+                }
+                // End of waiting-channels block
+                inWaitingChannels && line.startsWith("----- end") -> {
+                    out.appendLine(line)
+                    inWaitingChannels = false
+                }
+                // Keep all lines inside the waiting-channels block —
+                // sysTid entries show which kernel call each thread is stuck in,
+                // which is the key diagnostic for an ANR.
+                inWaitingChannels -> {
+                    out.appendLine(line)
+                }
+                // Java stack section may also appear in ANR traces
+                line.startsWith("----- pid") && line.contains("at") -> {
+                    inJavaStack = true
+                    out.appendLine(line)
+                }
+                inJavaStack && line.startsWith("----- end") -> {
+                    out.appendLine(line)
+                    inJavaStack = false
+                }
+                inJavaStack && (line.contains("\"main\"") || line.contains("BLOCKED")
+                        || line.contains("at com.winnative") || line.contains("at com.winlator")) -> {
+                    out.appendLine(line)
+                }
+                // Skip: RSS stats, VmSwap, CriticalEventLog metadata, libdebuggerd lines
+            }
+        }
+
+        return out.toString().trimEnd().ifEmpty {
+            // Fallback: if the format changed and nothing matched, return first 30 lines
+            lines.take(30).joinToString("\n")
+        }
+    }
+
+    /**
+     * Java crash traces: keep the exception class, message, and the first
+     * meaningful stack frames (app code only — skip framework/runtime frames).
+     */
+    private fun summarizeJavaCrashTrace(raw: String): String {
+        val lines = raw.lines()
+        val out = StringBuilder()
+        var inStack = false
+        var appFrameCount = 0
+        val maxAppFrames = 20
+
+        for (line in lines) {
+            when {
+                // Exception declaration line (e.g. "java.lang.NullPointerException: ...")
+                !inStack && (line.trimStart().startsWith("java.") ||
+                        line.trimStart().startsWith("kotlin.") ||
+                        line.trimStart().startsWith("android.") && line.contains("Exception")) -> {
+                    inStack = true
+                    out.appendLine(line)
+                }
+                inStack && line.trimStart().startsWith("at ") -> {
+                    val isAppFrame = line.contains("com.winnative") || line.contains("com.winlator")
+                    if (isAppFrame && appFrameCount < maxAppFrames) {
+                        out.appendLine(line)
+                        appFrameCount++
+                    } else if (appFrameCount == 0) {
+                        // Haven't found any app frames yet — keep first few framework frames
+                        // so the trace isn't completely empty if the crash is in a system call
+                        if (out.lines().count { it.trimStart().startsWith("at ") } < 5) {
+                            out.appendLine(line)
+                        }
+                    }
+                }
+                inStack && line.trimStart().startsWith("Caused by:") -> {
+                    out.appendLine(line)
+                    appFrameCount = 0  // reset per cause
+                }
+                inStack && line.isBlank() -> {
+                    inStack = false
+                }
+            }
+        }
+
+        return out.toString().trimEnd().ifEmpty { lines.take(30).joinToString("\n") }
+    }
+
+    /**
+     * Native crash traces: keep signal info, fault address, and the backtrace
+     * frames. Skip register dumps (x0-x29 etc.) and memory maps — registers
+     * are unreadable without a debugger and maps are huge.
+     */
+    private fun summarizeNativeCrashTrace(raw: String): String {
+        val lines = raw.lines()
+        val out = StringBuilder()
+        var inBacktrace = false
+        var inMemoryMap = false
+
+        for (line in lines) {
+            when {
+                // Memory map section is always last and always noise
+                line.contains("memory map") || line.contains("memory near") -> {
+                    inMemoryMap = true
+                }
+                inMemoryMap -> { /* skip */ }
+
+                // Signal and fault address — the "what crashed" summary
+                line.startsWith("signal ") || line.startsWith("Abort message:") ||
+                        line.contains("fault addr") -> {
+                    out.appendLine(line)
+                }
+                // Backtrace section header
+                line.trimStart().startsWith("backtrace:") -> {
+                    inBacktrace = true
+                    out.appendLine(line)
+                }
+                // Backtrace frames
+                inBacktrace && line.trimStart().startsWith("#") -> {
+                    out.appendLine(line)
+                }
+                inBacktrace && line.isBlank() -> {
+                    inBacktrace = false
+                }
+                // Skip: register dumps (lines like "    x0  0000..." or "    lr ...")
+            }
+        }
+
+        return out.toString().trimEnd().ifEmpty { lines.take(30).joinToString("\n") }
     }
 }
