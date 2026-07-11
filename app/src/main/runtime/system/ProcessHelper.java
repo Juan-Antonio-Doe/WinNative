@@ -84,7 +84,7 @@ public abstract class ProcessHelper {
 
   private static volatile BackgroundPauseMode backgroundPauseMode = BackgroundPauseMode.GAME_ONLY;
   private static volatile int registeredGamePid = -1;
-  private static final String OOM_TAG = "WNOomProtect";
+  private static final String OOM_TAG = "WineOomProtect";
 
   public static native int reapDeadChildrenNow();
 

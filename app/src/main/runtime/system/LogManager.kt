@@ -38,8 +38,27 @@ object LogManager {
     // Fixed diagnostic baseline always present in an event-watch capture,
     // independent of the app-tag filter — these are system components, not
     // app classes, so they don't belong in the same selectable list.
-    private val BASELINE_SYSTEM_TAGS = listOf(
-        "ActivityManager:I", "lmkd:I", "OomAdjuster:I", "ActivityTaskManager:I", "Process:I",
+    // Key = display name / selectable tag; value = logcat priority level.
+    // Stored as a map so the priority suffix is only applied when building
+    // the filterspec, not shown in the UI.
+    private val BASELINE_SYSTEM_TAGS: Map<String, String> = linkedMapOf(
+        "ActivityManager"   to "I",
+        "ActivityTaskManager" to "I",
+        "OomAdjuster"       to "I",
+        "lmkd"              to "I",
+        "Process"           to "I",
+    )
+
+    // Developer-curated tags that always appear in the selectable list,
+    // supplementing GeneratedLogTags (auto-discovered via Gradle) and
+    // user-added custom tags. Add entries here for tags that matter for
+    // debugging but may not be auto-discovered (e.g. tags in native code
+    // or tags used only in rarely-executed paths).
+    private val DEVELOPER_TAGS: Set<String> = setOf(
+        "WinlatorLifecycle",
+        "WineOomProtect",
+        "GuestProgramLauncherComponent",
+        "XServerLeakCheck",
     )
 
     private const val PREF_ENABLE_APP_DEBUG = "enable_app_debug"
@@ -232,7 +251,9 @@ object LogManager {
     /** Union of build-time-discovered tags and user-added custom ones, sorted for display. */
     @JvmStatic
     fun getAllKnownTags(): List<String> =
-        (GeneratedLogTags.TAGS + cachedCustomTags).distinct().sorted()
+        (GeneratedLogTags.TAGS + DEVELOPER_TAGS + BASELINE_SYSTEM_TAGS.keys + cachedCustomTags)
+            .distinct()
+            .sorted()
 
     @JvmStatic
     fun addCustomTag(context: Context, tag: String) {
@@ -549,18 +570,36 @@ object LogManager {
 
     private fun buildLogcatFilterSpecArgs(): List<String> {
         val spec = mutableListOf<String>()
-        spec.addAll(BASELINE_SYSTEM_TAGS)
+        val selectedBaseline = BASELINE_SYSTEM_TAGS.keys.filter { it in cachedSelectedTags }.toSet()
+        val selectedApp = cachedSelectedTags - BASELINE_SYSTEM_TAGS.keys
+
+        // System tags — always included in ALL mode; otherwise filtered like app tags.
+        when (cachedTagFilterMode) {
+            TagFilterMode.ALL ->
+                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) -> spec.add("$tag:$priority") }
+            TagFilterMode.INCLUDE ->
+                selectedBaseline.forEach { tag ->
+                    spec.add("$tag:${BASELINE_SYSTEM_TAGS[tag]}")
+                }
+            TagFilterMode.EXCLUDE ->
+                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) ->
+                    if (tag !in selectedBaseline) spec.add("$tag:$priority")
+                }
+        }
+
+        // App tags
         when (cachedTagFilterMode) {
             TagFilterMode.ALL -> spec.add("*:D")
             TagFilterMode.EXCLUDE -> {
                 spec.add("*:D")
-                cachedSelectedTags.forEach { spec.add("$it:S") }
+                selectedApp.forEach { spec.add("$it:S") }
             }
             TagFilterMode.INCLUDE -> {
-                cachedSelectedTags.forEach { spec.add("$it:D") }
+                selectedApp.forEach { spec.add("$it:D") }
                 spec.add("*:S")
             }
         }
+
         return spec
     }
 
