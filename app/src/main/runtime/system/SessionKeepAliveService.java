@@ -26,6 +26,7 @@ import com.winlator.cmod.runtime.display.environment.XEnvironment;
 import com.winlator.cmod.runtime.display.xserver.XServer;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -594,10 +595,50 @@ public class SessionKeepAliveService extends Service {
 
         // 4. LOW PRIORITY: Active store services
         if (!activeComponents.isEmpty()) {
+            // Define the priority order
+            List<String> priority = Arrays.asList(COMPONENT_STEAM, COMPONENT_EPIC, COMPONENT_GOG);
             List<String> names = new ArrayList<>(activeComponents.keySet());
-            return names.size() == 1
+            names.sort((a, b) -> {
+                int idxA = priority.indexOf(a);
+                int idxB = priority.indexOf(b);
+                if (idxA != -1 && idxB != -1) return Integer.compare(idxA, idxB);
+                if (idxA != -1) return -1;
+                if (idxB != -1) return 1;
+                return a.compareTo(b);
+            });
+
+            String joinedNames = names.get(0);
+            int size = names.size();
+
+            switch (size) {
+                case 0:
+                    break;
+                case 1:
+                    joinedNames = names.get(0);
+                    break;
+                case 2:
+                    joinedNames = names.get(0) + " and " + names.get(1);
+                    break;
+                default:
+                    // Future-proof: "A, B, and C"
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < size; i++) {
+                        sb.append(names.get(i));
+                        if (i < size - 2) {
+                            sb.append(", ");
+                        } else if (i == size - 2) {
+                            sb.append(", and ");
+                        }
+                    }
+                    joinedNames = sb.toString();
+            }
+
+            /*return names.size() == 1
                     ? names.get(0) + " service is active"
-                    : String.join(" and ", names) + " services are active";
+                    : String.join(" and ", names) + " services are active";*/
+
+            String suffix = (size == 1) ? " service is active" : " services are active";
+            return joinedNames + suffix;
         }
         return "WinNative is running in the background";
     }

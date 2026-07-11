@@ -7853,11 +7853,6 @@ class SteamService : Service() {
             runCatching { notificationHelper.cancel() }
                 .onFailure { Timber.w(it, "Failed to cancel SteamService notification on background suspend") }
         }*/
-        // Background persistance updated code
-        scope.launch(Dispatchers.Main) {
-            runCatching { SessionKeepAliveService.stopComponent(applicationContext, SessionKeepAliveService.COMPONENT_STEAM) }
-                .onFailure { Timber.w(it, "Failed to remove SteamService foreground state on background suspend") }
-        }
         // ToDo end.
         return true
     }
