@@ -39,11 +39,11 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import com.winlator.cmod.shared.android.NotificationHelper.Companion.ACTION_EXIT
 
-// Foreground service facade for Epic auth, library sync, downloads, and cloud saves.
+// Service facade for Epic auth, library sync, downloads, and cloud saves.
 @AndroidEntryPoint
 class EpicService : Service() {
-    private lateinit var notificationHelper: NotificationHelper
-    var notificationID = 1
+    /*private lateinit var notificationHelper: NotificationHelper
+    var notificationID = 1*/
 
     @Inject
     lateinit var epicManager: EpicManager
@@ -93,7 +93,9 @@ class EpicService : Service() {
                 Timber.tag("EPIC").i("[EpicService] First-time start - starting service with initial sync")
                 val intent = Intent(context, EpicService::class.java)
                 intent.action = ACTION_SYNC_LIBRARY
-                context.startForegroundService(intent)
+
+                // Just start as a normal service. KeepAliveService should protect this.
+                context.startService(intent)
                 return
             }
 
@@ -108,25 +110,27 @@ class EpicService : Service() {
                 val remainingMinutes = (SYNC_THROTTLE_MILLIS - timeSinceLastSync) / 1000 / 60
                 Timber.tag("EPIC").i("Starting service without sync - throttled (${remainingMinutes}min remaining)")
             }
-            context.startForegroundService(intent)
+
+            // Just start as a normal service. KeepAliveService should protect this.
+            context.startService(intent)
         }
 
         fun triggerLibrarySync(context: Context) {
             Timber.tag("EPIC").i("Triggering manual library sync (bypasses throttle)")
             val intent = Intent(context, EpicService::class.java)
             intent.action = ACTION_MANUAL_SYNC
-            context.startForegroundService(intent)
+            context.startService(intent)
         }
 
         fun stop() {
             instance?.let { service ->
                 runCatching {
-                    service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+                    SessionKeepAliveService.stopComponent(service, SessionKeepAliveService.COMPONENT_EPIC)
                 }.onFailure { Timber.w(it, "Failed to remove EpicService foreground state during shutdown") }
-                runCatching {
+                /*runCatching {
                     if (service::notificationHelper.isInitialized)
                         service.notificationHelper.cancel(service.notificationID)
-                }.onFailure { Timber.w(it, "Failed to cancel EpicService notification during shutdown") }
+                }.onFailure { Timber.w(it, "Failed to cancel EpicService notification during shutdown") }*/
                 service.stopSelf()
             }
         }
@@ -1267,7 +1271,7 @@ class EpicService : Service() {
         instance = this
         Timber.tag("Epic").i("[EpicService] Service created")
 
-        notificationHelper = NotificationHelper(applicationContext)
+//        notificationHelper = NotificationHelper(applicationContext)
         PluviaApp.events.on<AndroidEvent.EndProcess, Unit>(onEndProcess)
 
         DownloadCoordinator.registerDispatcher(DownloadRecord.STORE_EPIC, coordinatorDispatcher)
@@ -1280,9 +1284,7 @@ class EpicService : Service() {
     ): Int {
         Timber.tag("EPIC").d("onStartCommand() - action: ${intent?.action}")
 
-        val instance = getInstance()
-        val notification = notificationHelper.createForegroundNotification("Connected")
-        startForeground(1, notification)
+        SessionKeepAliveService.startComponent(this, SessionKeepAliveService.COMPONENT_EPIC, "Connected")
 
         val shouldSync =
             when (intent?.action) {
@@ -1425,14 +1427,14 @@ class EpicService : Service() {
         }
 
         scope.cancel()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        notificationHelper.cancel(notificationID)
+        SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_EPIC)
         instance = null
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
         Timber.tag("EPIC").i("Task removed; stopping managed app services")
+        SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_EPIC)
         AppTerminationHelper.stopManagedServices(applicationContext, "epic_task_removed")
     }
 
