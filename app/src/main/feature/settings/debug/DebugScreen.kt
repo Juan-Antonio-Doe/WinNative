@@ -1,4 +1,5 @@
 package com.winlator.cmod.feature.settings
+import android.os.Build
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
@@ -307,13 +308,15 @@ fun DebugScreen(
                 onCheckedChange = onAppDebugChanged,
             )
 
-            SettingsToggleCard(
-                title = stringResource(R.string.settings_debug_exit_reason_log_title),
-                subtitle = stringResource(R.string.settings_debug_exit_reason_log_subtitle),
-                icon = Icons.Outlined.BugReport,
-                checked = state.exitReasonLog,
-                onCheckedChange = onExitReasonLogChanged,
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {   // This log only works on API 30+ (Android 11+)
+                SettingsToggleCard(
+                    title = stringResource(R.string.settings_debug_exit_reason_log_title),
+                    subtitle = stringResource(R.string.settings_debug_exit_reason_log_subtitle),
+                    icon = Icons.Outlined.BugReport,
+                    checked = state.exitReasonLog,
+                    onCheckedChange = onExitReasonLogChanged,
+                )
+            }
 
             SettingsToggleCard(
                 title = stringResource(R.string.settings_debug_crash_log_title),

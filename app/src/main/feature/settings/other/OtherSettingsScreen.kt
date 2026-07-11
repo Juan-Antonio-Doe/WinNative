@@ -1248,6 +1248,8 @@ private fun HeartbeatFrequencyCard(
     currentFrequency: Int,
     onFrequencyChanged: (Int) -> Unit,
 ) {
+    // Tracks expansion. False = collapsed by default.
+    var expanded by remember { mutableStateOf(false) }
     // Raw text while the user is typing; committed as Int on Done/focus-loss.
     var rawText by remember(currentFrequency) { mutableStateOf(currentFrequency.toString()) }
     val focusManager = LocalFocusManager.current
@@ -1275,7 +1277,19 @@ private fun HeartbeatFrequencyCard(
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp, vertical = 12.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .paneNavItem(
+                        cornerRadius = 8.dp,
+                        onActivate = { expanded = !expanded },
+                        highlightColor = NavHighlight,
+                        tapToSelect = true,
+                    )
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Box(
                     modifier = Modifier
                         .size(34.dp)
@@ -1298,63 +1312,85 @@ private fun HeartbeatFrequencyCard(
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                     )
-                    Text(
-                        text = stringResource(R.string.settings_other_bg_heartbeat_subtitle),
-                        color = TextSecondary,
-                        fontSize = 11.sp,
-                    )
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = rawText,
-                onValueChange = { rawText = it.filter { c -> c.isDigit() } },
-                singleLine = true,
-                isError = isError,
-                keyboardOptions = KeyboardOptions(
-                    keyboardType = KeyboardType.Number,
-                    imeAction = ImeAction.Done,
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        focusManager.clearFocus()
-                        commitFrequency(parsed, onFrequencyChanged)
-                    },
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .paneNavItem(
-                        cornerRadius = 8.dp,
-                        // onAdjust allows changing the value with D-pad
-                        onAdjust = { dir ->
-                            // Calculate the next value using a step of 5
-                            val next = when {
-                                currentFrequency == 5 && dir < 0 -> 0   // If at 5 and pressing Left, jump to 0 (Disabled)
-                                currentFrequency == 0 && dir > 0 -> 5   // If at 0 and pressing Right, jump to 5 (Minimum)
-                                else -> (currentFrequency + dir * 5).coerceAtLeast(0)   // Standard increment/decrement
-                            }
-                            onFrequencyChanged(next)
-                        },
-                        highlightColor = NavHighlight,
-                    )
-                    .onFocusChanged { focus ->
-                        // Commit and clamp when the user leaves the field,
-                        // so tapping elsewhere still saves the value.
-                        if (!focus.isFocused) {
-                            commitFrequency(parsed, onFrequencyChanged)
-                        }
-                    },
-                suffix = { Text("s", color = TextSecondary, fontSize = 13.sp) },
-                supportingText = effectiveLabel.let { label ->
-                    {
+                    AnimatedVisibility(
+                        visible = expanded,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
                         Text(
-                            text = label,
-                            color = if (isError) Warning else TextSecondary,
+                            text = stringResource(R.string.settings_other_bg_heartbeat_subtitle),
+                            color = TextSecondary,
                             fontSize = 11.sp,
                         )
                     }
-                },
-            )
+                }
+                // Chevron icon
+                Icon(
+                    imageVector = if (expanded) Icons.Outlined.KeyboardArrowUp else Icons.Outlined.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            // Collapsible content (Input + Supporting Text)
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                Column {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = rawText,
+                        onValueChange = { rawText = it.filter { c -> c.isDigit() } },
+                        singleLine = true,
+                        isError = isError,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done,
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                focusManager.clearFocus()
+                                commitFrequency(parsed, onFrequencyChanged)
+                            },
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .paneNavItem(
+                                cornerRadius = 8.dp,
+                                // onAdjust allows changing the value with D-pad
+                                onAdjust = { dir ->
+                                    // Calculate the next value using a step of 5
+                                    val next = when {
+                                        currentFrequency == 5 && dir < 0 -> 0   // If at 5 and pressing Left, jump to 0 (Disabled)
+                                        currentFrequency == 0 && dir > 0 -> 5   // If at 0 and pressing Right, jump to 5 (Minimum)
+                                        else -> (currentFrequency + dir * 5).coerceAtLeast(0)   // Standard increment/decrement
+                                    }
+                                    onFrequencyChanged(next)
+                                },
+                                highlightColor = NavHighlight,
+                            )
+                            .onFocusChanged { focus ->
+                                // Commit and clamp when the user leaves the field,
+                                // so tapping elsewhere still saves the value.
+                                if (!focus.isFocused) {
+                                    commitFrequency(parsed, onFrequencyChanged)
+                                }
+                            },
+                        suffix = { Text("s", color = TextSecondary, fontSize = 13.sp) },
+                        supportingText = effectiveLabel.let { label ->
+                            {
+                                Text(
+                                    text = label,
+                                    color = if (isError) Warning else TextSecondary,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                        },
+                    )
+                }
+            }
         }
     }
 }
