@@ -139,6 +139,7 @@ import java.io.File
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.core.content.edit
 
 private data class Particle(
     val x: Float,
@@ -591,7 +592,7 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
             notifDenied.value = !granted
             if (granted) {
                 backgroundSessionEnabled.value = true
-                prefs(this).edit().putBoolean("enable_background_session", true).apply()
+                prefs(this).edit { putBoolean("enable_background_session", true) }
             } else if (Build.VERSION.SDK_INT >= 33 &&
                 !shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
             ) {
@@ -889,6 +890,11 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
         storageGranted.value = hasStoragePermission()
         notifGranted.value = hasNotificationPermissionSilently()
         backgroundSessionEnabled.value = prefs(this).getBoolean("enable_background_session", true)
+        if (Build.VERSION.SDK_INT > 36) {
+            if (!prefs(this).contains("enable_background_wakelock")) {      // If wakeLock preference isn't saved, enable it by default on Android 16+.
+                prefs(this).edit { putBoolean("enable_background_wakelock", true) }
+            }
+        }
         refreshWizardState()
         loadAdvancedProfiles()
 
