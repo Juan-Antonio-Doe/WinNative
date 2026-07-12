@@ -491,7 +491,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private boolean enableLogsMenu;
     private boolean autoPauseContainer;
     private static final String TAG = "XServerDisplayActivity";
-    private static final AtomicLong breadcrumbCounter = new AtomicLong(0);
 
     private GuestProgramLauncherComponent guestProgramLauncherComponent;
     private EnvVars overrideEnvVars;

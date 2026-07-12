@@ -552,10 +552,9 @@ object LogManager {
         if (!cachedEventWatchEnabled) return
 
         // Verify READ_LOGS permission at runtime
-        if (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_LOGS)
-            != PackageManager.PERMISSION_GRANTED) {
-            logW(TAG, null, context) { "READ_LOGS permission not granted, pause watch may not capture system logs" }
-        }
+        val hasReadLogs = (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_LOGS)
+        == PackageManager.PERMISSION_GRANTED)
+        if (!hasReadLogs) logW(TAG, null, context) { "READ_LOGS permission not granted, pause watch may not capture system logs" }
 
         stopEventWatch()
         try {

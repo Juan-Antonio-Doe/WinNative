@@ -19,6 +19,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.preference.PreferenceManager;
 
+import com.winlator.cmod.R;
 import com.winlator.cmod.app.shell.UnifiedActivity;
 import com.winlator.cmod.feature.stores.steam.utils.PrefManager;
 import com.winlator.cmod.runtime.display.XServerDisplayActivity;
@@ -580,17 +581,17 @@ public class SessionKeepAliveService extends Service {
     private static String getNotificationContent() {
         // 1. HIGHEST PRIORITY: The game/container
         if (sessionActive.get()) {
-            return isContainerPaused ? "Container session is paused" : "There is a container session running";
+            return isContainerPaused ? instance.getString(R.string.fg_keep_alive_notification_content_container_paused) : instance.getString(R.string.fg_keep_alive_notification_content_container_running);
         }
 
         // 2. MEDIUM PRIORITY: Downloads
         synchronized (activeDownloads) {
-            if (!activeDownloads.isEmpty()) return "Downloading and installing components in the background";
+            if (!activeDownloads.isEmpty()) return instance.getString(R.string.fg_keep_alive_notification_content_downloading_installing);
         }
 
         // 3. MEDIUM PRIORITY: Steam friends (if enabled)
         if (PrefManager.INSTANCE.getChatStayRunningOnExit() && isAppVisible())
-            return "Steam chat running in background";
+            return instance.getString(R.string.fg_keep_alive_notification_content_steam_chat_running);
 
         // 4. LOW PRIORITY: Active store services
         if (!activeComponents.isEmpty()) {
@@ -616,7 +617,7 @@ public class SessionKeepAliveService extends Service {
                     joinedNames = names.get(0);
                     break;
                 case 2:
-                    joinedNames = names.get(0) + " and " + names.get(1);
+                    joinedNames = names.get(0) + ' ' + instance.getString(R.string.general_and) + ' ' + names.get(1);
                     break;
                 default:
                     // Future-proof: "A, B, and C"
@@ -626,17 +627,13 @@ public class SessionKeepAliveService extends Service {
                         if (i < size - 2) {
                             sb.append(", ");
                         } else if (i == size - 2) {
-                            sb.append(", and ");
+                            sb.append(", " + instance.getString(R.string.general_and) + ' ');
                         }
                     }
                     joinedNames = sb.toString();
             }
 
-            /*return names.size() == 1
-                    ? names.get(0) + " service is active"
-                    : String.join(" and ", names) + " services are active";*/
-
-            String suffix = (size == 1) ? " service is active" : " services are active";
+            String suffix = (size == 1) ? instance.getString(R.string.fg_keep_alive_notification_content_store_service_active) : instance.getString(R.string.fg_keep_alive_notification_content_store_services_active);
             return joinedNames + suffix;
         }
         return "WinNative is running in the background";
