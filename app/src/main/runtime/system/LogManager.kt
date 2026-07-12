@@ -579,7 +579,6 @@ object LogManager {
 
             closeProcessStdin(eventWatchProcess)
         } catch (e: Exception) {
-//            Timber.tag(TAG).e("Failed to start event watch: ${e.message}")
             logE(TAG, null, context) { "Failed to start event watch: ${e.message}" }
         }
     }

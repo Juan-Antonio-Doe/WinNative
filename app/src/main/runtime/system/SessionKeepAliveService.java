@@ -143,7 +143,7 @@ public class SessionKeepAliveService extends Service {
         LogManager.log(TAG, "onPauseSession", ctx);
         if (instance != null) {
             instance.acquireWakeLock();
-            instance.runOomSweep();
+//            instance.runOomSweep();
             instance.startHeartbeat();
         }
         updateForegroundState(ctx);
@@ -559,8 +559,8 @@ public class SessionKeepAliveService extends Service {
         if (t != null) {
             t.interrupt();
             heartbeatThread = null;
+            LogManager.log(TAG, "Heartbeat stopped", this);
         }
-        LogManager.log(TAG, "Heartbeat stopped", this);
     }
 
     private void runOomSweep() {
@@ -572,7 +572,6 @@ public class SessionKeepAliveService extends Service {
         try {
             ProcessHelper.protectAllWineProcesses();
         } catch (Exception e) {
-//            Timber.tag(TAG).e(e, "OOM protection sweep failed");
             LogManager.logE(TAG, "OOM protection sweep failed", e, this);
         }
     }
