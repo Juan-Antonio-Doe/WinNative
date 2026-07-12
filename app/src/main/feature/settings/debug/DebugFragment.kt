@@ -1,5 +1,6 @@
 // Settings > Debug fragment — hosts DebugScreen via ComposeView.
 package com.winlator.cmod.feature.settings
+import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.os.Bundle
@@ -309,7 +310,7 @@ class DebugFragment : Fragment() {
                 }
             startActivity(Intent.createChooser(shareIntent, getString(R.string.settings_debug_share_logs)))
 
-            Handler(Looper.getMainLooper()).postDelayed({ cleanupSharedLogs() }, 3 * 60 * 1000L)
+            Handler(Looper.getMainLooper()).postDelayed({ cleanupSharedLogs(ctx) }, 3 * 60 * 1000L)
         } catch (e: Exception) {
             WinToast.show(ctx, getString(R.string.settings_debug_capture_failed, e.message ?: ""))
         }
@@ -478,6 +479,7 @@ class DebugFragment : Fragment() {
         file.delete()
         val set = HashSet(downloadedLogKeys())
         if (set.remove(key)) preferences.edit { putStringSet(KEY_DOWNLOADED_LOGS, set) }
+        LogManager.resetLoggedExitKeys(preferences)
         refresh()
     }
 
@@ -488,11 +490,12 @@ class DebugFragment : Fragment() {
         var lastSharedLogFile: File? = null
 
         /** Call when starting a new game or after 3min timeout to clean up shared logs. */
-        fun cleanupSharedLogs() {
+        fun cleanupSharedLogs(ctx: Context) {
             lastSharedLogFile?.let { file ->
                 if (file.exists()) file.delete()
                 lastSharedLogFile = null
             }
+            LogManager.resetLoggedExitKeys(ctx)
         }
     }
 }

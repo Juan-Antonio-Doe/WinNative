@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.preference.PreferenceManager
 import com.winlator.cmod.app.config.SettingsConfig
@@ -18,6 +19,7 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.core.content.edit
 
 object LogManager {
     private const val TAG = "LogManager"
@@ -68,6 +70,7 @@ object LogManager {
     private const val PREF_TAG_FILTER_MODE = "log_tag_filter_mode"
     private const val PREF_SELECTED_TAGS = "app_debug_tags"
     private const val PREF_CUSTOM_TAGS = "app_debug_custom_tags"
+    private const val PREF_LOGGED_EXIT_KEYS = "logged_exit_keys"
 
     // ── Cached state ──────────────────────────────────────────────────
     //
@@ -243,6 +246,7 @@ object LogManager {
         val logsDir = getLogsDir(context)
         logsDir.listFiles()?.filter { it.name.endsWith(".old.log") }?.forEach { it.delete() }
         logsDir.listFiles()?.filter { it.name.endsWith(".log") }?.forEach { it.delete() }
+        resetLoggedExitKeys(context)
         startAppLogging(context)
     }
 
@@ -353,6 +357,7 @@ object LogManager {
 
     fun clearLogs(context: Context) {
         getLogsDir(context).listFiles()?.forEach { it.delete() }
+        resetLoggedExitKeys(context)
     }
 
     @JvmStatic
@@ -429,7 +434,25 @@ object LogManager {
 
     /** Deletes all shareable log files; returns the count removed. */
     @JvmStatic
-    fun deleteShareableLogs(context: Context): Int = getShareableLogFiles(context).count { it.delete() }
+    fun deleteShareableLogs(context: Context): Int {
+        var count = getShareableLogFiles(context).count { it.delete() }
+        resetLoggedExitKeys(context)
+        return count
+    }
+
+    /** Deletes the logged exit keys so the log can be re-written. */
+    @JvmStatic
+    fun resetLoggedExitKeys(context: Context) {
+        // Reset dedup keys so the next logLastExitReasons() call re-writes everything.
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit { remove(PREF_LOGGED_EXIT_KEYS) }
+    }
+
+    /** Deletes the logged exit keys so the log can be re-written. */
+    @JvmStatic
+    fun resetLoggedExitKeys(preferences: SharedPreferences) {
+        preferences.edit { remove(PREF_LOGGED_EXIT_KEYS) }
+    }
 
     // ── 1. Custom breadcrumbs, callable from anywhere ───────────────
     //
@@ -639,12 +662,21 @@ object LogManager {
                 appendLine(ctx, EXIT_REASONS_FILE, "I/$TAG", "No historical exit info available")
                 return
             }
+
+            val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+            val loggedKeys = getLoggedExitKeys(prefs).toMutableSet()
+            var wroteSomething = false
+
             for ((index, info) in infos.withIndex()) {
-                if (cachedExitReasonLogEnabled) {
+                val key = exitKey(info)
+                val exitKey = "exit_$key"
+                val crashKey = "crash_$key"
+
+                if (cachedExitReasonLogEnabled && exitKey !in loggedKeys) {
                     // Separator line with reason number: 0 = newest/last, larger = older
                     appendLine(
                         ctx, EXIT_REASONS_FILE, "I/$TAG",
-                        "---- Exit reason #${index} (0=new/last, ${maxExitReasons}=oldest) ----"
+                        "\n---- Exit reason #${index} (0=new/last, ${maxExitReasons}=oldest) ----"
                     )
 
                     appendLine(
@@ -652,8 +684,10 @@ object LogManager {
                         "pid=${info.pid} reason=${info.reason}-[${getExitReasonName(info.reason)}] status=${info.status} " +
                                 "importance=${info.importance} desc=${info.description} timestamp=${Date(info.timestamp)}",
                     )
+                    loggedKeys.add(exitKey)
+                    wroteSomething = true
                 }
-                if (cachedCrashLogEnabled) {
+                if (cachedCrashLogEnabled && crashKey !in loggedKeys) {
                     val isErrorReport = when (info.reason) {
                         ApplicationExitInfo.REASON_CRASH,
                         ApplicationExitInfo.REASON_CRASH_NATIVE,
@@ -675,7 +709,7 @@ object LogManager {
                                 val summary = summarizeTrace(rawTrace, info.reason)
                                 appendLine(
                                     ctx, CRASH_FILE, "I/$TAG",
-                                    "=== Historical $type Detected ===\n" +
+                                    "\n=== Historical $type Detected ===\n" +
                                             "PID: ${info.pid} | Timestamp: ${Date(info.timestamp)}\n" +
                                             "Description: ${info.description}\n" +
                                             "Trace Summary:\n$summary\n" +
@@ -689,7 +723,14 @@ object LogManager {
                             Timber.tag(TAG).e("Failed to read historical trace: ${e.message}")
                         }
                     }
+                    // Mark as crash-processed to avoid re-scanning non-crash reasons
+                    loggedKeys.add(crashKey)
+                    wroteSomething = true
                 }
+            }
+
+            if (wroteSomething) {
+                saveLoggedExitKeys(prefs, loggedKeys)
             }
         } catch (e: Exception) {
             Timber.tag(TAG).e("Failed to read exit reasons: ${e.message}")
@@ -733,6 +774,22 @@ object LogManager {
         } catch (e: Exception) {
             Timber.e(e, "Failed to log crash")
         }
+    }
+
+    // A unique, stable key for one ApplicationExitInfo record.
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun exitKey(info: ApplicationExitInfo): String = "${info.pid}_${info.timestamp}"
+
+    private fun getLoggedExitKeys(prefs: SharedPreferences): Set<String> =
+        prefs.getString(PREF_LOGGED_EXIT_KEYS, null)
+            ?.split(",")?.filter { it.isNotEmpty() }?.toSet()
+            ?: emptySet()
+
+    private fun saveLoggedExitKeys(prefs: SharedPreferences, keys: Set<String>) {
+        // Sort descending based on the timestamp (the suffix after the last underscore)
+        // We keep up to 30 entries to cover both 'exit_' and 'crash_' for the 5-item historical window.
+        val trimmed = keys.sortedByDescending { it.substringAfterLast("_").toLongOrNull() ?: 0L }.take(30)
+        prefs.edit { putString(PREF_LOGGED_EXIT_KEYS, trimmed.joinToString(",")) }
     }
 
     private fun summarizeTrace(rawTrace: String, reason: Int): String {
