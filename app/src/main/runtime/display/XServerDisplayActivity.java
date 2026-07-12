@@ -888,7 +888,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
     private void switchLaunchTargetAfterCleanup(Intent intent) {
         if (!switchLaunchInProgress.compareAndSet(false, true)) {
-            LogManager.log("XServerDisplayActivity", "Switch launch already in progress; ignoring duplicate target intent", this);
+            LogManager.log(TAG, "Switch launch already in progress; ignoring duplicate target intent", this);
             return;
         }
 
@@ -905,7 +905,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             performForcedSessionCleanup("switch launch target");
             runOnUiThread(() -> {
                 if (isFinishing() || isDestroyed()) {
-                    LogManager.logW("XServerDisplayActivity", "Switch cleanup finished after activity was destroyed", null, this);
+                    LogManager.logW(TAG, "Switch cleanup finished after activity was destroyed", null, this);
                     return;
                 }
                 setIntent(relaunchIntent);
@@ -937,7 +937,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                     km.requestDismissKeyguard(this, null);
                 }
             } catch (Throwable t) {
-                Log.w("XServerDisplayActivity",
+                Log.w(TAG,
                     "requestDismissKeyguard failed: " + t.getMessage());
             }
         }
