@@ -147,10 +147,9 @@ public class XConnectorEpoll implements Runnable {
       return;
     }
 
-    // Log immediately on entry: fd, reason, whether multithreadedClients
     int fd = client.clientSocket != null ? client.clientSocket.fd : -1;
-    LogManager.logI(TAG,
-            "killConnection entry: fd=" + fd + " reason=\"" + reason + "\" multithreadedClients=" + multithreadedClients);
+    // Log immediately on entry: fd, reason, whether multithreadedClients - Commented out to avoid noise
+    // LogManager.logI(TAG, "killConnection entry: fd=" + fd + " reason=\"" + reason + "\" multithreadedClients=" + multithreadedClients);
 
     if (!client.markKillingOnce()) return; // already being/been torn down by another thread
     client.connected = false;
