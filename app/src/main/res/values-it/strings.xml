@@ -509,6 +509,8 @@
 
     <!-- Container > Graphics Driver -->
     <string name="container_graphics_driver">Driver grafico</string>
+    <string name="container_graphics_transcoder">Transcodificatore BCn</string>
+    <string name="container_graphics_quality">Qualità BCn</string>
     <string name="container_graphics_configuration">Configurazione driver grafico</string>
     <string name="container_graphics_version">Versione driver grafico</string>
     <string name="container_graphics_available_extensions">Estensioni disponibili</string>
@@ -824,6 +826,8 @@ Ad es. <b>META</b> per il <i>tasto META</i>, \n
 
     <string name="settings_other_language_title">Lingua</string>
     <string name="settings_other_language_summary">Scegli la lingua di visualizzazione</string>
+    <string name="settings_other_game_language_title">Lingua del gioco</string>
+    <string name="settings_other_game_language_summary">Lingua preferita per i download di Steam/Epic/GOG</string>
     <string name="settings_other_language_system_default">Predefinita di sistema</string>
 
     <string name="settings_other_section_integration">Integrazione</string>
@@ -1175,6 +1179,9 @@ Percorso installato:
     <string name="cloud_saves_history_restore_success">Salvataggio ripristinato dal backup.</string>
     <string name="cloud_saves_history_sign_in">Accedi a Google per visualizzare la cronologia dei salvataggi.</string>
     <string name="cloud_saves_history_title">Cronologia salvataggi</string>
+    <string name="cloud_saves_history_download">Scarica</string>
+    <string name="cloud_saves_history_download_success">File scaricato.</string>
+    <string name="cloud_saves_history_download_failed">Download non riuscito.</string>
     <string name="cloud_saves_keep_replaced_backup">Mantieni un backup del salvataggio sostituito</string>
     <string name="cloud_saves_keep_replaced_backup_summary">Se cambi idea, puoi ripristinarlo dalla Cronologia salvataggi.</string>
     <string name="cloud_saves_no_backups">Ancora nessun backup per questo gioco.</string>

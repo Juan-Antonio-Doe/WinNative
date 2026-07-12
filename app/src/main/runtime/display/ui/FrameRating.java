@@ -95,6 +95,8 @@ public class FrameRating extends LinearLayout implements Runnable {
   private boolean canReadGpu;
   private Context context;
   private int cpuFailCount;
+  private CPUStatus.AppCpuSample prevCpuSample;
+  private boolean cpuWarmedUp;
   private volatile int cpuPercent;
   private volatile int cpuTemp;
   private volatile int cpuSensorTemp;
@@ -163,7 +165,7 @@ public class FrameRating extends LinearLayout implements Runnable {
   private static final long FALLBACK_SUPPRESSION_NS = 2000000000L;
   private static final long FPS_CALC_INTERVAL_NS = 1000000000L;
   private static final long HUD_REFRESH_MS = 1000L;
-  private static final long MIN_FRAME_INTERVAL_NS = 1000000L;
+  private static final long CPU_WARMUP_POLL_MS = 500L;
   private static final int MAX_FRAME_SAMPLES = 1024;
 
   // ── Tap-cycle display modes ──────────────────────────────────────
@@ -210,6 +212,8 @@ public class FrameRating extends LinearLayout implements Runnable {
     this.enableTemp = true;
     this.enableRenderer = true;
     this.cpuPercent = -1;
+    this.prevCpuSample = null;
+    this.cpuWarmedUp = false;
     this.gpuLoad = -1;
     this.batteryWatts = -1.0f;
     this.cpuTemp = -1;
@@ -299,7 +303,8 @@ public class FrameRating extends LinearLayout implements Runnable {
             if (isStatsRunning) {
               calculateStats();
               if (statsHandler != null) {
-                statsHandler.postDelayed(this, 1000L);
+                long next = (prevCpuSample != null && !cpuWarmedUp) ? CPU_WARMUP_POLL_MS : 1000L;
+                statsHandler.postDelayed(this, next);
               }
             }
           }
@@ -311,6 +316,8 @@ public class FrameRating extends LinearLayout implements Runnable {
       return;
     }
     this.isStatsRunning = true;
+    this.prevCpuSample = null;
+    this.cpuWarmedUp = false;
     this.statsThread = new HandlerThread("HardwareStatsThread");
     this.statsThread.start();
     this.statsHandler = new Handler(this.statsThread.getLooper());
@@ -1184,9 +1191,6 @@ public class FrameRating extends LinearLayout implements Runnable {
         return;
       }
 
-      if (this.lastFrameNano > 0 && nowNano - this.lastFrameNano < MIN_FRAME_INTERVAL_NS) {
-        return;
-      }
       if (this.lastFrameNano == 0) {
         this.lastFrameNano = nowNano;
       }
@@ -1304,7 +1308,8 @@ public class FrameRating extends LinearLayout implements Runnable {
     File[] gpuFiles = {
       new File("/sys/class/kgsl/kgsl-3d0/gpu_busy_percentage"),
       new File("/sys/class/kgsl/kgsl-3d0/devfreq/gpu_load"),
-      new File("/sys/class/misc/mali0/device/utilisation")
+      new File("/sys/class/misc/mali0/device/utilisation"),
+      new File("/sys/kernel/gpu/gpu_busy")
     };
 
     for (File f : gpuFiles) {
@@ -1319,6 +1324,24 @@ public class FrameRating extends LinearLayout implements Runnable {
       }
     }
 
+    File mtkMali = new File("/proc/mtk_mali/utilization");
+    if (mtkMali.exists() && mtkMali.canRead()) {
+      try (BufferedReader reader = new BufferedReader(new FileReader(mtkMali))) {
+        String line;
+        while ((line = reader.readLine()) != null) {
+          int idx = line.indexOf("ACTIVE=");
+          if (idx >= 0) {
+            int start = idx + 7;
+            int end = line.indexOf(' ', start);
+            String num = (end > start ? line.substring(start, end) : line.substring(start))
+                .replaceAll("[^0-9]", "");
+            if (!num.isEmpty()) return Integer.parseInt(num);
+          }
+        }
+      } catch (Exception ignored) {
+      }
+    }
+
     File gpubusy = new File("/sys/class/kgsl/kgsl-3d0/gpubusy");
     if (gpubusy.exists() && gpubusy.canRead()) {
       try (BufferedReader reader = new BufferedReader(new FileReader(gpubusy))) {
@@ -1328,7 +1351,7 @@ public class FrameRating extends LinearLayout implements Runnable {
           if (parts.length >= 2) {
             long busy = Long.parseLong(parts[0]);
             long total = Long.parseLong(parts[1]);
-            if (total != 0) return (int) ((100 * busy) / total);
+            return total != 0 ? (int) ((100 * busy) / total) : 0;
           }
         }
       } catch (Exception ignored) {
@@ -1358,18 +1381,23 @@ public class FrameRating extends LinearLayout implements Runnable {
     }
     if (this.enableCpu && this.canReadCpu) {
       try {
-        short[] clocks = CPUStatus.getCurrentClockSpeeds();
-        if (clocks != null && clocks.length > 0) {
-          long cur = 0;
-          long max = 0;
-          for (int i = 0; i < clocks.length; i++) {
-            cur += clocks[i];
-            max += CPUStatus.getMaxClockSpeed(i);
+        CPUStatus.AppCpuSample sample = CPUStatus.readAppCpuSample();
+        int pct = -1;
+        if (sample != null) {
+          if (this.prevCpuSample != null) pct = sample.percentSince(this.prevCpuSample);
+          this.prevCpuSample = sample;
+        }
+        if (pct >= 0) {
+          this.cpuPercent = pct;
+          this.cpuFailCount = 0;
+          if (!this.cpuWarmedUp) {
+            this.cpuWarmedUp = true;
+            Handler refresh = this.uiRefreshHandler;
+            if (refresh != null) refresh.post(this);
           }
-          if (max > 0) {
-            this.cpuPercent = (int) ((cur * 100) / max);
-            this.cpuFailCount = 0;
-          }
+        } else if (!this.cpuWarmedUp) {
+          int freq = CPUStatus.getClockFreqLoadPercent();
+          if (freq >= 0) this.cpuPercent = freq;
         }
       } catch (Exception e) {
         this.cpuPercent = -1;
@@ -1456,7 +1484,7 @@ public class FrameRating extends LinearLayout implements Runnable {
     if (this.enableCpu && this.tvCpu != null) {
       SpannableStringBuilder b = new SpannableStringBuilder();
       append(b, "CPU ", this.C_CPU);
-      append(b, this.cpuPercent >= 0 ? this.cpuPercent + "%" : "N/A", this.C_VALUE);
+      append(b, Math.max(this.cpuPercent, 0) + "%", this.C_VALUE);
       this.tvCpu.setText(b);
       this.tvCpu.setVisibility(View.VISIBLE);
     } else if (this.tvCpu != null) {
