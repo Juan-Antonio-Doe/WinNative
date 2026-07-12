@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -252,7 +253,7 @@ class OtherSettingsFragment : Fragment() {
                 enableFileProvider = preferences.getBoolean("enable_file_provider", true),
                 openInBrowser = preferences.getBoolean("open_with_android_browser", false),
                 shareClipboard = preferences.getBoolean("share_android_clipboard", false),
-                enableBackgroundSession = preferences.getBoolean("enable_background_session", true),
+                enableBackgroundSession = preferences.getBoolean("enable_background_session", false),
                 enableAutoPause = preferences.getBoolean("enable_auto_pause_when_background", false),
                 useBackgroundWakelock = preferences.getBoolean("enable_background_wakelock", false),
                 heartbeatFrequency = preferences.getInt("background_heartbeat_frequency", 0),

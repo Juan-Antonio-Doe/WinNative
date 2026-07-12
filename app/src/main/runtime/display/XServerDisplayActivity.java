@@ -1547,7 +1547,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         showLaunchPreloader(getString(R.string.preloader_initializing));
 
         // Dependency-install sessions must not become background/reattachable sessions.
-        if (!isDependencyInstall && preferences.getBoolean("enable_background_session", true)) {
+        if (!isDependencyInstall && preferences.getBoolean("enable_background_session", false)) {
             SessionKeepAliveService.startSession(this);
         }
 
@@ -3860,7 +3860,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
 
         if (!sessionCleanupStarted.get()) {
-            if (exitRequested.get() || !preferences.getBoolean("enable_background_session", true)) {
+            if (exitRequested.get() || !preferences.getBoolean("enable_background_session", false)) {
                 performForcedSessionCleanup("onDestroy");
             }
         }

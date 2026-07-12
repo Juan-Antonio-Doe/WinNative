@@ -335,6 +335,8 @@ fun OtherSettingsScreen(
                 onModeChanged = onBackgroundPauseModeChanged,
             )
 
+            SectionLabel(stringResource(R.string.settings_other_section_integration), modifier = Modifier.padding(top = 8.dp))
+
             SettingsToggleCard(
                 title = stringResource(R.string.session_drawer_output_to_display),
                 subtitle = stringResource(R.string.settings_external_display_output_summary),
@@ -342,8 +344,6 @@ fun OtherSettingsScreen(
                 checked = state.externalDisplayOutput,
                 onCheckedChange = onExternalDisplayOutputChanged,
             )
-
-            SectionLabel(stringResource(R.string.settings_other_section_integration), modifier = Modifier.padding(top = 8.dp))
 
             SettingsToggleCard(
                 title = stringResource(R.string.settings_general_enable_file_provider),
