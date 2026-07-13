@@ -1453,9 +1453,21 @@ private fun SelectableChannelChip(
     onToggle: () -> Unit,
     tint: Color = Accent,
 ) {
+    // This should be changed if tint is used by other chips in the future.
+    val isSystemTag = tint == Accent
+
     val bg = if (isSelected) tint.copy(alpha = 0.18f) else IconBoxBg
-    val borderColor = if (isSelected) tint.copy(alpha = 0.55f) else CardBorder
-    val textColor = if (isSelected) tint else TextPrimary
+    // If it's a system tag, show a subtle tinted border and text even when unselected
+    val borderColor = when {
+        isSelected -> tint.copy(alpha = 0.55f)
+        isSystemTag -> tint.copy(alpha = 0.35f) // Subtle yellow border for system tags
+        else -> CardBorder
+    }
+    val textColor = when {
+        isSelected -> tint
+        isSystemTag -> tint.copy(alpha = 0.85f) // Dimmed yellow text for system tags
+        else -> TextPrimary
+    }
     Box(
         modifier =
             Modifier
