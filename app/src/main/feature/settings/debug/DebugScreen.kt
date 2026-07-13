@@ -138,6 +138,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -1008,8 +1009,10 @@ private fun MultiSelectDialog(
     initiallySelected: List<String>,
     onDismiss: () -> Unit,
     onConfirm: (List<String>) -> Unit,
+    headerContent: (@Composable () -> Unit)? = null,
     extraContent: (@Composable (selected: Set<String>, onToggle: (String) -> Unit) -> Unit)? = null,
     systemTags: Set<String> = emptySet(),
+    maxWidth: Dp = 460.dp,
 ) {
     val selected =
         remember(initiallySelected) {
@@ -1094,7 +1097,7 @@ private fun MultiSelectDialog(
             Box(
                 modifier =
                     Modifier
-                        .widthIn(max = 460.dp)
+                        .widthIn(max = maxWidth)
                         .fillMaxWidth()
                         .heightIn(max = availableHeight)
                         .clip(RoundedCornerShape(18.dp))
@@ -1110,6 +1113,9 @@ private fun MultiSelectDialog(
                         fontWeight = FontWeight.SemiBold,
                     )
                     Spacer(Modifier.height(4.dp))
+
+                    headerContent?.invoke()
+
                     // Optional hint area can be provided by caller via extraContent or you can keep a default hint
                     Spacer(Modifier.height(12.dp))
 
@@ -1212,79 +1218,108 @@ private fun LogTagFilterDialog(
         initiallySelected = initiallySelected,
         onDismiss = onDismiss,
         onConfirm = { selected -> onConfirm(mode, selected) },
-        extraContent = { selectedSet, onToggle ->
-            Column {
-                // Mode switch row
+        maxWidth = 680.dp,
+        headerContent = {
+            Column(modifier = Modifier.padding(top = 16.dp)) {
+                // Top Row: Mode Switch and Add Field side-by-side
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Text(text = stringResource(R.string.settings_debug_tag_filter_mode), color = TextPrimary)
-                    Spacer(Modifier.width(8.dp))
-                    SegmentedControl(
-                        options = listOf(
-                            stringResource(R.string.settings_debug_tag_filter_all),
-                            stringResource(R.string.settings_debug_tag_filter_include),
-                            stringResource(R.string.settings_debug_tag_filter_exclude),
-                        ),
-                        selectedIndex = when (mode) {
-                            LogManager.TagFilterMode.ALL -> 0
-                            LogManager.TagFilterMode.INCLUDE -> 1
-                            LogManager.TagFilterMode.EXCLUDE -> 2
-                        },
-                        onSelectedIndex = { idx ->
-                            mode = when (idx) {
-                                0 -> LogManager.TagFilterMode.ALL
-                                1 -> LogManager.TagFilterMode.INCLUDE
-                                else -> LogManager.TagFilterMode.EXCLUDE
+                    // Mode Section
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_debug_tag_filter_mode).uppercase(),
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        SegmentedControl(
+                            options = listOf(
+                                stringResource(R.string.settings_debug_tag_filter_all),
+                                stringResource(R.string.settings_debug_tag_filter_include),
+                                stringResource(R.string.settings_debug_tag_filter_exclude),
+                            ),
+                            selectedIndex = when (mode) {
+                                LogManager.TagFilterMode.ALL -> 0
+                                LogManager.TagFilterMode.INCLUDE -> 1
+                                LogManager.TagFilterMode.EXCLUDE -> 2
+                            },
+                            onSelectedIndex = { idx ->
+                                mode = when (idx) {
+                                    0 -> LogManager.TagFilterMode.ALL
+                                    1 -> LogManager.TagFilterMode.INCLUDE
+                                    else -> LogManager.TagFilterMode.EXCLUDE
+                                }
                             }
+                        )
+                    }
+
+                    // Add Custom Tag Section
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.settings_debug_add_custom_tag_hint).uppercase(),
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = newTagText,
+                                onValueChange = { newTagText = it },
+                                placeholder = { Text(stringResource(R.string.settings_debug_add_custom_tag_hint), fontSize = 12.sp) },
+                                singleLine = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
+                                modifier = Modifier.weight(1f).height(38.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Accent,
+                                    unfocusedBorderColor = CardBorder
+                                )
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            SmallActionButton(
+                                label = stringResource(R.string.common_ui_add),
+                                textColor = Accent,
+                                onClick = {
+                                    val tag = newTagText.trim()
+                                    if (tag.isNotEmpty()) {
+                                        onAddCustomTag(tag)
+                                        newTagText = ""
+                                    }
+                                }
+                            )
                         }
-                    )
+                    }
                 }
 
-                Spacer(Modifier.height(12.dp))
-
-                // Add custom tag field
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    OutlinedTextField(
-                        value = newTagText,
-                        onValueChange = { newTagText = it },
-                        placeholder = { Text(stringResource(R.string.settings_debug_add_custom_tag_hint)) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    SmallActionButton(
-                        label = stringResource(R.string.common_ui_add),
-                        textColor = Accent,
-                        onClick = {
-                            val tag = newTagText.trim()
-                            if (tag.isNotEmpty()) {
-                                onAddCustomTag(tag)
-                                newTagText = ""
-                            }
-                        }
-                    )
-                }
-
-                // Show custom tags with remove affordance
+                // Custom Tags row
                 if (customTags.isNotEmpty()) {
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(6.dp))
+                    HorizontalDivider(color = Color(0xFF2A2A3A), thickness = 0.5.dp)
+                    Spacer(Modifier.height(6.dp))
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text("CUSTOM:", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         customTags.forEach { tag ->
                             RemovableTagChip(tag = tag, onRemove = { onRemoveCustomTag(tag) })
                         }
                     }
+                    Spacer(Modifier.height(3.dp))
+                    HorizontalDivider(color = Color(0xFF2A2A3A), thickness = 0.5.dp)
                 }
-
-                Spacer(Modifier.height(8.dp))
             }
-        }
+        },
     )
 }
 
