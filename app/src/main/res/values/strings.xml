@@ -1597,6 +1597,7 @@ Installed path:
     <string name="file_manager_delete_failed">Delete failed</string>
     <string name="file_manager_rename_failed">Rename failed</string>
     <string name="file_manager_create_folder_failed">Create folder failed</string>
+    <string name="settings_content_refresh">Refresh</string>
     <!-- Notifications -->
     <string name="fg_keep_alive_notification_content_container_paused">Container session is paused</string>
     <string name="fg_keep_alive_notification_content_container_running">There is a container session running</string>
