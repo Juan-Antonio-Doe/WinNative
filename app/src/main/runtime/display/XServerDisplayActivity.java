@@ -940,7 +940,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                     "requestDismissKeyguard failed: " + t.getMessage());
             }
         }
-        DebugFragment.Companion.cleanupSharedLogs(this);
+        DebugFragment.Companion.cleanupSharedLogs();
         com.winlator.cmod.runtime.system.LogManager.prepareForNewSession(this);
 
         preferences = PreferenceManager.getDefaultSharedPreferences(this);

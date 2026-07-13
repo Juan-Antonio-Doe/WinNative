@@ -310,7 +310,7 @@ class DebugFragment : Fragment() {
                 }
             startActivity(Intent.createChooser(shareIntent, getString(R.string.settings_debug_share_logs)))
 
-            Handler(Looper.getMainLooper()).postDelayed({ cleanupSharedLogs(ctx) }, 3 * 60 * 1000L)
+            Handler(Looper.getMainLooper()).postDelayed({ cleanupSharedLogs() }, 3 * 60 * 1000L)
         } catch (e: Exception) {
             WinToast.show(ctx, getString(R.string.settings_debug_capture_failed, e.message ?: ""))
         }
@@ -476,9 +476,6 @@ class DebugFragment : Fragment() {
     private fun deleteLogFile(entry: LogFileEntry) {
         val file = File(entry.absolutePath)
         val key = logDownloadKey(file)
-        if (file.name.startsWith("crash") || file.name.startsWith("exit_reasons")) {
-            LogManager.resetLoggedExitKeys(preferences)
-        }
         file.delete()
         val set = HashSet(downloadedLogKeys())
         if (set.remove(key)) preferences.edit { putStringSet(KEY_DOWNLOADED_LOGS, set) }
@@ -492,12 +489,11 @@ class DebugFragment : Fragment() {
         var lastSharedLogFile: File? = null
 
         /** Call when starting a new game or after 3min timeout to clean up shared logs. */
-        fun cleanupSharedLogs(ctx: Context) {
+        fun cleanupSharedLogs() {
             lastSharedLogFile?.let { file ->
                 if (file.exists()) file.delete()
                 lastSharedLogFile = null
             }
-            LogManager.resetLoggedExitKeys(ctx)
         }
     }
 }

@@ -26,6 +26,7 @@ object LogManager {
     private const val APP_LOG_FILE = "app_filtered-logs.log"
     private const val EXIT_REASONS_FILE = "exit_reasons.log"
     private const val CRASH_FILE = "crash.log"
+    private const val POST_MORTEM_FILE = "post_mortem.log"
 
     private var logcatProcess: Process? = null
     private var appLogProcess: Process? = null
@@ -71,6 +72,7 @@ object LogManager {
     private const val PREF_SELECTED_TAGS = "app_debug_tags"
     private const val PREF_CUSTOM_TAGS = "app_debug_custom_tags"
     private const val PREF_LOGGED_EXIT_KEYS = "logged_exit_keys"
+    private const val PREF_POST_MORTEM_KEYS = "post_mortem_keys"
 
     // ── Cached state ──────────────────────────────────────────────────
     //
@@ -144,8 +146,8 @@ object LogManager {
             crashHandlerInitialized = true
         }
 
-        // Capture previous exit reasons
-        logLastExitReasons(app)
+        logLastExitReasons(app)     // Capture previous exit reasons if toggle is enabled.
+        runPostMortemIfNeeded(app)  // Capture unexpected crashes at start if crash toggle is disabled.
     }
 
     private fun refreshCaches(context: Context) {
@@ -246,7 +248,6 @@ object LogManager {
         val logsDir = getLogsDir(context)
         logsDir.listFiles()?.filter { it.name.endsWith(".old.log") }?.forEach { it.delete() }
         logsDir.listFiles()?.filter { it.name.endsWith(".log") }?.forEach { it.delete() }
-        resetLoggedExitKeys(context)
         startAppLogging(context)
     }
 
@@ -265,7 +266,7 @@ object LogManager {
         if (cleaned.isEmpty()) return
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val updated = cachedCustomTags + cleaned
-        prefs.edit().putString(PREF_CUSTOM_TAGS, updated.joinToString(",")).apply()
+        prefs.edit { putString(PREF_CUSTOM_TAGS, updated.joinToString(",")) }
     }
 
     @JvmStatic
@@ -273,16 +274,17 @@ object LogManager {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         val updatedCustomTags = cachedCustomTags - tag
         val updatedSelectedTags = cachedSelectedTags - tag // deselect too — a removed tag can't stay selected
-        prefs.edit()
-            .putString(PREF_CUSTOM_TAGS, updatedCustomTags.joinToString(","))
-            .putString(PREF_SELECTED_TAGS, updatedSelectedTags.joinToString(","))
-            .apply()
+        prefs.edit {
+            putString(PREF_CUSTOM_TAGS, updatedCustomTags.joinToString(","))
+                .putString(PREF_SELECTED_TAGS, updatedSelectedTags.joinToString(","))
+        }
     }
 
     @JvmStatic
     fun setSelectedTags(context: Context, tags: Set<String>) {
-        PreferenceManager.getDefaultSharedPreferences(context).edit()
-            .putString(PREF_SELECTED_TAGS, tags.joinToString(",")).apply()
+        PreferenceManager.getDefaultSharedPreferences(context).edit {
+            putString(PREF_SELECTED_TAGS, tags.joinToString(","))
+        }
     }
 
     @JvmStatic
@@ -290,8 +292,9 @@ object LogManager {
 
     @JvmStatic
     fun setTagFilterMode(context: Context, mode: TagFilterMode) {
-        PreferenceManager.getDefaultSharedPreferences(context).edit()
-            .putString(PREF_TAG_FILTER_MODE, mode.name).apply()
+        PreferenceManager.getDefaultSharedPreferences(context).edit {
+            putString(PREF_TAG_FILTER_MODE, mode.name)
+        }
     }
 
     @JvmStatic
@@ -357,7 +360,6 @@ object LogManager {
 
     fun clearLogs(context: Context) {
         getLogsDir(context).listFiles()?.forEach { it.delete() }
-        resetLoggedExitKeys(context)
     }
 
     @JvmStatic
@@ -435,23 +437,7 @@ object LogManager {
     /** Deletes all shareable log files; returns the count removed. */
     @JvmStatic
     fun deleteShareableLogs(context: Context): Int {
-        var count = getShareableLogFiles(context).count { it.delete() }
-        resetLoggedExitKeys(context)
-        return count
-    }
-
-    /** Deletes the logged exit keys so the log can be re-written. */
-    @JvmStatic
-    fun resetLoggedExitKeys(context: Context) {
-        // Reset dedup keys so the next logLastExitReasons() call re-writes everything.
-        PreferenceManager.getDefaultSharedPreferences(context)
-            .edit { remove(PREF_LOGGED_EXIT_KEYS) }
-    }
-
-    /** Deletes the logged exit keys so the log can be re-written. */
-    @JvmStatic
-    fun resetLoggedExitKeys(preferences: SharedPreferences) {
-        preferences.edit { remove(PREF_LOGGED_EXIT_KEYS) }
+        return getShareableLogFiles(context).count { it.delete() }
     }
 
     // ── 1. Custom breadcrumbs, callable from anywhere ───────────────
@@ -656,14 +642,27 @@ object LogManager {
         try {
             val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             val infos: List<ApplicationExitInfo> = am.getHistoricalProcessExitReasons(ctx.packageName, 0, maxExitReasons)
-            if (infos.isEmpty()) {
-                appendLine(ctx, EXIT_REASONS_FILE, "I/$TAG", "No historical exit info available")
-                return
-            }
 
             val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
-            val loggedKeys = getLoggedExitKeys(prefs).toMutableSet()
-            var wroteSomething = false
+            val logsDir = getLogsDir(ctx)
+            val loggedKeys = getPersistedKeys(prefs, PREF_LOGGED_EXIT_KEYS).toMutableSet()
+
+            // Auto-reset keys when a log file no longer exists — covers manual deletion,
+            // clearLogs() calls, and fresh installs without needing external management.
+            val originalSize = loggedKeys.size
+            if (!File(logsDir, EXIT_REASONS_FILE).exists()) loggedKeys.removeAll { it.startsWith("exit_") }
+            if (!File(logsDir, CRASH_FILE).exists()) loggedKeys.removeAll { it.startsWith("crash_") }
+
+            var wroteSomething = (loggedKeys.size != originalSize)
+
+            if (infos.isEmpty()) {
+                // Only write the "no info" placeholder if the file is missing/just cleared.
+                if (cachedExitReasonLogEnabled && !File(logsDir, EXIT_REASONS_FILE).exists()) {
+                    appendLine(ctx, EXIT_REASONS_FILE, "I/$TAG", "No historical exit info available")
+                }
+                if (wroteSomething) persistKeys(prefs, PREF_LOGGED_EXIT_KEYS, loggedKeys)
+                return
+            }
 
             for ((index, info) in infos.withIndex()) {
                 val key = exitKey(info)
@@ -704,7 +703,7 @@ object LogManager {
                         try {
                             info.traceInputStream?.use { input ->
                                 val rawTrace = input.bufferedReader().readText()
-                                val summary = summarizeTrace(rawTrace, info.reason)
+                                val summary = extractTraceExcerpt(rawTrace, info.reason, maxFrames = 20)
                                 appendLine(
                                     ctx, CRASH_FILE, "I/$TAG",
                                     "\n=== Historical $type Detected ===\n" +
@@ -728,7 +727,7 @@ object LogManager {
             }
 
             if (wroteSomething) {
-                saveLoggedExitKeys(prefs, loggedKeys)
+                persistKeys(prefs, PREF_LOGGED_EXIT_KEYS, loggedKeys)
             }
         } catch (e: Exception) {
             Timber.tag(TAG).e("Failed to read exit reasons: ${e.message}")
@@ -774,175 +773,180 @@ object LogManager {
         }
     }
 
+    /**
+     * Runs once per app start. Checks whether the previous run ended abnormally
+     * and writes a concise diagnostic to post_mortem.log.
+     */
+    @JvmStatic
+    fun runPostMortemIfNeeded(context: Context? = null) {
+        if (cachedCrashLogEnabled) return
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        val ctx = resolveContext(context) ?: return
+        val prefs = PreferenceManager.getDefaultSharedPreferences(ctx)
+
+        // Auto-reset keys when the file no longer exists — covers log deletion,
+        // fresh installs, and manual file removal without needing clearLogs().
+        val postMortemFile = File(getLogsDir(ctx), POST_MORTEM_FILE)
+        if (!postMortemFile.exists()) {
+            prefs.edit { remove(PREF_POST_MORTEM_KEYS) }
+        }
+
+        try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val infos = am.getHistoricalProcessExitReasons(ctx.packageName, 0, 5)
+            if (infos.isEmpty()) return
+
+            val loggedKeys = getPersistedKeys(prefs, PREF_POST_MORTEM_KEYS).toMutableSet()
+            var wrote = false
+
+            for (info in infos) {
+                if (info.reason !in POST_MORTEM_REASONS) continue
+                val key = "pm_${exitKey(info)}"
+                if (key in loggedKeys) continue
+
+                appendLine(ctx, POST_MORTEM_FILE, "I/$TAG", buildPostMortemReport(info, ctx))
+                loggedKeys.add(key)
+                wrote = true
+            }
+            if (wrote) persistKeys(prefs, PREF_POST_MORTEM_KEYS, loggedKeys)
+        } catch (e: Exception) {
+            Timber.tag(TAG).e("Post-mortem check failed: ${e.message}")
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun buildPostMortemReport(info: ApplicationExitInfo, context: Context): String {
+        return buildString {
+            appendLine("=== POST-MORTEM [${getExitReasonName(info.reason)}] ===")
+            appendLine("Time     : ${Date(info.timestamp)}")
+            appendLine("PID      : ${info.pid}")
+            appendLine("Reason   : ${info.reason} [${getExitReasonName(info.reason)}]")
+            appendLine("Status   : ${info.status}")
+            appendLine("Desc     : ${info.description ?: "none"}")
+            try {
+                val pkg = context.packageManager.getPackageInfo(context.packageName, 0)
+                appendLine("Build    : ${pkg.versionName} (${pkg.longVersionCode})")
+            } catch (_: Exception) {}
+            appendLine("Android  : ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})")
+            appendLine("Device   : ${Build.MANUFACTURER} ${Build.MODEL}")
+            try {
+                info.traceInputStream?.use { stream ->
+                    val excerpt = extractTraceExcerpt(
+                        stream.bufferedReader().readText(), info.reason, maxFrames = 5
+                    )
+                    if (excerpt.isNotBlank()) {
+                        appendLine("--- Excerpt ---")
+                        appendLine(excerpt.trim())
+                        appendLine("--- End Excerpt ---")
+                    }
+                }
+            } catch (e: Exception) {
+                appendLine("Excerpt  : unavailable (${e.message})")
+            }
+            append("=== END POST-MORTEM ===")
+        }
+    }
+
     // A unique, stable key for one ApplicationExitInfo record.
     @RequiresApi(Build.VERSION_CODES.R)
     private fun exitKey(info: ApplicationExitInfo): String = "${info.pid}_${info.timestamp}"
 
-    private fun getLoggedExitKeys(prefs: SharedPreferences): Set<String> =
-        prefs.getString(PREF_LOGGED_EXIT_KEYS, null)
+    private fun getPersistedKeys(prefs: SharedPreferences, prefKey: String): Set<String> =
+        prefs.getString(prefKey, null)
             ?.split(",")?.filter { it.isNotEmpty() }?.toSet()
             ?: emptySet()
 
-    private fun saveLoggedExitKeys(prefs: SharedPreferences, keys: Set<String>) {
-        // Sort descending based on the timestamp (the suffix after the last underscore)
-        // We keep up to 30 entries to cover both 'exit_' and 'crash_' for the 5-item historical window.
-        val trimmed = keys.sortedByDescending { it.substringAfterLast("_").toLongOrNull() ?: 0L }.take(30)
-        prefs.edit { putString(PREF_LOGGED_EXIT_KEYS, trimmed.joinToString(",")) }
+    private fun persistKeys(prefs: SharedPreferences, prefKey: String, keys: Set<String>) {
+        prefs.edit {
+            putString(prefKey, keys.sortedDescending().take(20).joinToString(","))
+        }
     }
 
-    private fun summarizeTrace(rawTrace: String, reason: Int): String {
+    // ── Unified trace extraction ──────────────────────────────────────────
+    //
+    // Used for both the crash log (maxFrames = 20) and the post-mortem
+    // (maxFrames = 5). Higher maxFrames → more context; lower → more concise.
+
+    // For avoid useless lines in the crash log.
+    private val FRAMEWORK_FRAME_PREFIXES = setOf(
+        "at java.", "at kotlin.", "at android.", "at androidx.",
+        "at com.android.", "at dalvik.", "at sun.", "at libcore.",
+    )
+
+    private fun isFrameworkFrame(line: String): Boolean =
+        FRAMEWORK_FRAME_PREFIXES.any { line.trimStart().startsWith(it) }
+
+    private fun extractTraceExcerpt(raw: String, reason: Int, maxFrames: Int = 6): String {
+        val lines = raw.lines()
+        val concise = maxFrames <= 6
+
         return when (reason) {
-            ApplicationExitInfo.REASON_ANR -> summarizeAnrTrace(rawTrace)
-            ApplicationExitInfo.REASON_CRASH -> summarizeJavaCrashTrace(rawTrace)
-            ApplicationExitInfo.REASON_CRASH_NATIVE -> summarizeNativeCrashTrace(rawTrace)
-            else -> rawTrace.lines().take(50).joinToString("\n") // unknown: keep first 50 lines
-        }
-    }
-
-    /**
-     * ANR traces contain memory stats, CriticalEventLog boilerplate, and hundreds
-     * of sysTid lines for threads that aren't relevant to the block. Keep only:
-     * - Subject line (the dispatch timeout description)
-     * - Waiting Channels block (which thread is stuck and in what kernel call)
-     * - Any "main" thread or "Binder" thread lines that show who holds the lock
-     */
-    private fun summarizeAnrTrace(raw: String): String {
-        val lines = raw.lines()
-        val out = StringBuilder()
-        var inWaitingChannels = false
-        var inJavaStack = false
-
-        for (line in lines) {
-            when {
-                // Always keep the subject — it describes the actual timeout
-                line.startsWith("Subject:") -> {
-                    out.appendLine(line)
-                }
-                // Start of the waiting-channels block
-                line.contains("----- Waiting Channels:") -> {
-                    inWaitingChannels = true
-                    out.appendLine(line)
-                }
-                // End of waiting-channels block
-                inWaitingChannels && line.startsWith("----- end") -> {
-                    out.appendLine(line)
-                    inWaitingChannels = false
-                }
-                // Keep all lines inside the waiting-channels block —
-                // sysTid entries show which kernel call each thread is stuck in,
-                // which is the key diagnostic for an ANR.
-                inWaitingChannels -> {
-                    out.appendLine(line)
-                }
-                // Java stack section may also appear in ANR traces
-                line.startsWith("----- pid") && line.contains("at") -> {
-                    inJavaStack = true
-                    out.appendLine(line)
-                }
-                inJavaStack && line.startsWith("----- end") -> {
-                    out.appendLine(line)
-                    inJavaStack = false
-                }
-                inJavaStack && (line.contains("\"main\"") || line.contains("BLOCKED")
-                        || line.contains("at com.winnative") || line.contains("at com.winlator")) -> {
-                    out.appendLine(line)
-                }
-                // Skip: RSS stats, VmSwap, CriticalEventLog metadata, libdebuggerd lines
+            ApplicationExitInfo.REASON_ANR -> {
+                val subject = lines.firstOrNull { it.startsWith("Subject:") }
+                // Waiting Channels shows which kernel call each thread is stuck in.
+                val channelHeader = lines.firstOrNull { it.contains("Waiting Channels:") }
+                val channelLines = lines
+                    .dropWhile { !it.contains("Waiting Channels:") }
+                    .drop(1)
+                    .filter { it.contains("sysTid=") }
+                    .take(maxFrames)
+                (listOfNotNull(subject, channelHeader) + channelLines).joinToString("\n")
             }
-        }
 
-        return out.toString().trimEnd().ifEmpty {
-            // Fallback: if the format changed and nothing matched, return first 30 lines
-            lines.take(30).joinToString("\n")
-        }
-    }
-
-    /**
-     * Java crash traces: keep the exception class, message, and the first
-     * meaningful stack frames (app code only — skip framework/runtime frames).
-     */
-    private fun summarizeJavaCrashTrace(raw: String): String {
-        val lines = raw.lines()
-        val out = StringBuilder()
-        var inStack = false
-        var appFrameCount = 0
-        val maxAppFrames = 20
-
-        for (line in lines) {
-            when {
-                // Exception declaration line (e.g. "java.lang.NullPointerException: ...")
-                !inStack && (line.trimStart().startsWith("java.") ||
-                        line.trimStart().startsWith("kotlin.") ||
-                        line.trimStart().startsWith("android.") && line.contains("Exception")) -> {
-                    inStack = true
-                    out.appendLine(line)
-                }
-                inStack && line.trimStart().startsWith("at ") -> {
-                    val isAppFrame = line.contains("com.winnative") || line.contains("com.winlator")
-                    if (isAppFrame && appFrameCount < maxAppFrames) {
-                        out.appendLine(line)
-                        appFrameCount++
-                    } else if (appFrameCount == 0) {
-                        // Haven't found any app frames yet — keep first few framework frames
-                        // so the trace isn't completely empty if the crash is in a system call
-                        if (out.lines().count { it.trimStart().startsWith("at ") } < 5) {
+            ApplicationExitInfo.REASON_CRASH -> {
+                val out = StringBuilder()
+                var inException = false
+                var frameCount = 0
+                for (line in lines) {
+                    val t = line.trimStart()
+                    when {
+                        !inException && (t.contains("Exception") || t.contains("Error")
+                                || t.startsWith("Exception in thread")) -> {
+                            inException = true
                             out.appendLine(line)
                         }
+                        inException && t.startsWith("at ") && frameCount < maxFrames -> {
+                            // Concise: take every frame to stay within maxFrames.
+                            // Verbose: skip pure framework frames to highlight app code.
+                            if (concise || !isFrameworkFrame(line)) {
+                                out.appendLine(line)
+                                frameCount++
+                            }
+                        }
+                        inException && t.startsWith("Caused by:") -> {
+                            out.appendLine(line)
+                            frameCount = 0
+                        }
+                        inException && t.isBlank() -> break
                     }
                 }
-                inStack && line.trimStart().startsWith("Caused by:") -> {
-                    out.appendLine(line)
-                    appFrameCount = 0  // reset per cause
-                }
-                inStack && line.isBlank() -> {
-                    inStack = false
-                }
+                out.toString().trimEnd().ifEmpty { lines.take(maxFrames).joinToString("\n") }
             }
-        }
 
-        return out.toString().trimEnd().ifEmpty { lines.take(30).joinToString("\n") }
+            ApplicationExitInfo.REASON_CRASH_NATIVE -> {
+                val signal = lines.firstOrNull { it.startsWith("signal ") }
+                val abort  = lines.firstOrNull { it.startsWith("Abort message:") }
+                val frames = lines.filter { it.trimStart().startsWith("#") }.take(maxFrames)
+                (listOfNotNull(signal, abort) + frames).joinToString("\n")
+            }
+
+            // SIGNALED / LOW_MEMORY / EXCESSIVE_RESOURCE_USAGE:
+            // no trace content is available; the header fields are sufficient.
+            else -> ""
+        }
     }
 
     /**
-     * Native crash traces: keep signal info, fault address, and the backtrace
-     * frames. Skip register dumps (x0-x29 etc.) and memory maps — registers
-     * are unreadable without a debugger and maps are huge.
+     * Exit reasons that constitute an abnormal termination and trigger a
+     * post-mortem report. Add entries here to cover new cases to be auto-reported.
      */
-    private fun summarizeNativeCrashTrace(raw: String): String {
-        val lines = raw.lines()
-        val out = StringBuilder()
-        var inBacktrace = false
-        var inMemoryMap = false
-
-        for (line in lines) {
-            when {
-                // Memory map section is always last and always noise
-                line.contains("memory map") || line.contains("memory near") -> {
-                    inMemoryMap = true
-                }
-                inMemoryMap -> { /* skip */ }
-
-                // Signal and fault address — the "what crashed" summary
-                line.startsWith("signal ") || line.startsWith("Abort message:") ||
-                        line.contains("fault addr") -> {
-                    out.appendLine(line)
-                }
-                // Backtrace section header
-                line.trimStart().startsWith("backtrace:") -> {
-                    inBacktrace = true
-                    out.appendLine(line)
-                }
-                // Backtrace frames
-                inBacktrace && line.trimStart().startsWith("#") -> {
-                    out.appendLine(line)
-                }
-                inBacktrace && line.isBlank() -> {
-                    inBacktrace = false
-                }
-                // Skip: register dumps (lines like "    x0  0000..." or "    lr ...")
-            }
-        }
-
-        return out.toString().trimEnd().ifEmpty { lines.take(30).joinToString("\n") }
-    }
+    @RequiresApi(Build.VERSION_CODES.R)
+    private val POST_MORTEM_REASONS: Set<Int> = setOf(
+        ApplicationExitInfo.REASON_ANR,
+        ApplicationExitInfo.REASON_CRASH,
+        ApplicationExitInfo.REASON_CRASH_NATIVE,
+        /*ApplicationExitInfo.REASON_SIGNALED,
+        ApplicationExitInfo.REASON_LOW_MEMORY,
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,*/
+    )
 }
