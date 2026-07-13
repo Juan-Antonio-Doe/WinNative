@@ -23,7 +23,7 @@ import androidx.core.content.edit
 
 object LogManager {
     private const val TAG = "LogManager"
-    private const val APP_LOG_FILE = "app_debug.log"
+    private const val APP_LOG_FILE = "app_filtered-logs.log"
     private const val EXIT_REASONS_FILE = "exit_reasons.log"
     private const val CRASH_FILE = "crash.log"
 
