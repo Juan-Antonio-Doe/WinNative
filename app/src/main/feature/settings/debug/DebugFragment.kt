@@ -476,10 +476,12 @@ class DebugFragment : Fragment() {
     private fun deleteLogFile(entry: LogFileEntry) {
         val file = File(entry.absolutePath)
         val key = logDownloadKey(file)
+        if (file.name.startsWith("crash") || file.name.startsWith("exit_reasons")) {
+            LogManager.resetLoggedExitKeys(preferences)
+        }
         file.delete()
         val set = HashSet(downloadedLogKeys())
         if (set.remove(key)) preferences.edit { putStringSet(KEY_DOWNLOADED_LOGS, set) }
-        LogManager.resetLoggedExitKeys(preferences)
         refresh()
     }
 
