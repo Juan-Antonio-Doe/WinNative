@@ -59,7 +59,7 @@ object LogManager {
     // or tags used only in rarely-executed paths).
     private val DEVELOPER_TAGS: Set<String> = setOf(
         "WinlatorLifecycle",
-        "WineOomProtect",
+        "OomProtectCheck",
         "GuestProgramLauncherComponent",
         "XServerLeakCheck",
     )
@@ -105,6 +105,8 @@ object LogManager {
     /** Cheap, public, and the recommended guard for any genuinely expensive log message. */
     @JvmStatic
     val isDebugEnabled: Boolean get() = cachedAppDebugEnabled
+    @JvmStatic
+    val isEventWatchEnabled: Boolean get() = cachedEventWatchEnabled
 
     private var crashHandlerInitialized = false
 
@@ -583,44 +585,32 @@ object LogManager {
         val selectedBaseline = BASELINE_SYSTEM_TAGS.keys.filter { it in cachedSelectedTags }.toSet()
         val selectedApp = cachedSelectedTags - BASELINE_SYSTEM_TAGS.keys
 
-        // System tags — always included in ALL mode; otherwise filtered like app tags.
         when (cachedTagFilterMode) {
             TagFilterMode.ALL -> {
-                // In ALL mode, include ALL system tags that haven't been explicitly
-                // deselected. An empty selection means "show everything" (default),
-                // so only suppress a system tag if it was explicitly unchecked.
-                val excluded = BASELINE_SYSTEM_TAGS.keys - selectedBaseline
-                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) ->
-                    if (tag !in excluded || cachedSelectedTags.isEmpty()) {
-                        spec.add("$tag:$priority")
-                    }
-                }
+                // Wildcard first as the default floor; explicit baseline rules follow
+                // so they take precedence and elevate those tags to their native level.
+                // No :S rules anywhere — ALL mode never suppresses anything.
                 spec.add("*:D")
-                excluded.forEach { spec.add("$it:S") }
-            }
-            TagFilterMode.INCLUDE ->
-                selectedBaseline.forEach { tag ->
-                    spec.add("$tag:${BASELINE_SYSTEM_TAGS[tag]}")
-                }
-            TagFilterMode.EXCLUDE ->
-                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) ->
-                    if (tag !in selectedBaseline) spec.add("$tag:$priority")
-                }
-        }
-
-        // App tags
-        when (cachedTagFilterMode) {
-            TagFilterMode.ALL -> spec.add("*:D")
-            TagFilterMode.EXCLUDE -> {
-                spec.add("*:D")
-                selectedApp.forEach { spec.add("$it:S") }
+                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) -> spec.add("$tag:$priority") }
             }
             TagFilterMode.INCLUDE -> {
-                selectedApp.forEach { spec.add("$it:D") }
+                // Wildcard first to suppress everything; selected tags follow to
+                // un-suppress themselves by overriding the wildcard.
                 spec.add("*:S")
+                selectedBaseline.forEach { tag -> spec.add("$tag:${BASELINE_SYSTEM_TAGS[tag]}") }
+                selectedApp.forEach { tag -> spec.add("$tag:D") }
+            }
+            TagFilterMode.EXCLUDE -> {
+                // Wildcard first to allow everything; excluded tags follow to suppress
+                // themselves, non-excluded baseline tags follow to elevate to native level.
+                spec.add("*:D")
+                BASELINE_SYSTEM_TAGS.forEach { (tag, priority) ->
+                    if (tag in selectedBaseline) spec.add("$tag:S")
+                    else spec.add("$tag:$priority")
+                }
+                selectedApp.forEach { tag -> spec.add("$tag:S") }
             }
         }
-
         return spec
     }
 

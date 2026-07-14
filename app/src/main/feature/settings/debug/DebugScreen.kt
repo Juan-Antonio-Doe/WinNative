@@ -157,6 +157,7 @@ private val Warning = Color(0xFFFF4444)
 private val Success = Color(0xFF7CC142)
 private val TextPrimary = Color(0xFFF0F4FF)
 private val TextSecondary = Color(0xFF7A8FA8)
+private val SystemTagColor = Color(0xFFFFCC00)
 
 // State
 data class DebugState(
@@ -1433,7 +1434,7 @@ private fun ColumnScope.ChannelGrid(
     ) {
         itemsIndexed(options) { index, channel ->
             val isSystem = channel in systemTags
-            val chipAccent = if (isSystem) Color(0xFFFFCC00) else Accent
+            val chipAccent = if (isSystem) SystemTagColor else Accent
             SelectableChannelChip(
                 label = channel,
                 isSelected = channel in selected,
@@ -1453,8 +1454,7 @@ private fun SelectableChannelChip(
     onToggle: () -> Unit,
     tint: Color = Accent,
 ) {
-    // This should be changed if tint is used by other chips in the future.
-    val isSystemTag = tint == Accent
+    val isSystemTag = tint == SystemTagColor
 
     val bg = if (isSelected) tint.copy(alpha = 0.18f) else IconBoxBg
     // If it's a system tag, show a subtle tinted border and text even when unselected

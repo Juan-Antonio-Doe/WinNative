@@ -84,7 +84,7 @@ public abstract class ProcessHelper {
 
   private static volatile BackgroundPauseMode backgroundPauseMode = BackgroundPauseMode.GAME_ONLY;
   private static volatile int registeredGamePid = -1;
-  private static final String OOM_TAG = "WineOomProtect";
+  private static final String OOM_TAG = "OomProtectCheck";
 
   public static native int reapDeadChildrenNow();
 
@@ -244,10 +244,25 @@ public abstract class ProcessHelper {
   }
 
   public static void protectAllWineProcesses() {
-    ArrayList<String> processes = listRunningWineProcesses();
-    for (String process : processes) {
-      setOomScoreAdj(Integer.parseInt(process), OOM_SCORE_ADJ_PROTECT);
-    }
+      ArrayList<String> processes = listRunningWineProcesses();
+      boolean eventWatchActive = LogManager.isEventWatchEnabled();
+      for (String process : processes) {
+          if (eventWatchActive) {
+            String actualAdj = readProcFile("/proc/" + process + "/oom_score_adj");
+            LogManager.log(OOM_TAG, "pid=" + process +
+                    " beforeSet=" + (actualAdj != null ? actualAdj.trim() : "unreadable"));
+          }
+
+          setOomScoreAdj(Integer.parseInt(process), OOM_SCORE_ADJ_PROTECT);
+
+          // Check if the OOM Score is doing something, actually.
+          if (eventWatchActive) {
+            String actualAdj = readProcFile("/proc/" + process + "/oom_score_adj");
+            LogManager.log(OOM_TAG,
+                    "pid=" + process + " requested=" + OOM_SCORE_ADJ_PROTECT
+                            + " actual=" + (actualAdj != null ? actualAdj.trim() : "unreadable"));
+          }
+      }
   }
 
   public static void pauseAllWineProcesses() {
