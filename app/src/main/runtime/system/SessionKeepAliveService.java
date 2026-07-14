@@ -405,7 +405,7 @@ public class SessionKeepAliveService extends Service {
     private void ensureForeground() {
         boolean containerActive = sessionActive.get();
         // Only show Exit button if app is in background AND container is running or user wants to keep steam chat alive.
-//        boolean showExit = isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues.
+//        boolean showExit = isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues, ANR crash for example.
         boolean showExit = isAppVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit();
 
         // Determine target activity: Game screen if active, else Main menu

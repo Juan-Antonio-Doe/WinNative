@@ -551,7 +551,7 @@ object LogManager {
             Runtime.getRuntime().exec(arrayOf("logcat", "-c")).waitFor()
 
             val safeLabel = label.ifBlank { "manual" }.replace(Regex("[^A-Za-z0-9_-]"), "_")
-            val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+            val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
             val file = File(getLogsDir(context), "event_${safeLabel}_$stamp.log")
             appendLine(context, file.name, "I/$TAG", "=== event watch started ($safeLabel) ===")
 
@@ -741,7 +741,7 @@ object LogManager {
     @JvmStatic
     fun logCrash(context: Context, thread: Thread, throwable: Throwable) {
         try {
-            val timestamp = SimpleDateFormat("yyyy-MM-dd_HH:mm:ss_SSS", Locale.US).format(Date())
+            val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
             val fileName = "crashFromThread_$timestamp.log"
             val file = File(getLogsDir(context), fileName)
 
