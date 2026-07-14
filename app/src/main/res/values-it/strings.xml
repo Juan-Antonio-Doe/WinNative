@@ -1583,5 +1583,33 @@ Percorso installato:
     <string name="steam_chat_setting_stay_running">Esegui in background</string>
     <string name="steam_chat_setting_stay_running_desc">Mantieni la chat attiva dopo aver chiuso WinNative</string>
     <string name="settings_content_refresh">Aggiorna</string>
+
+    <!-- Settings > Other: Background Protection -->
+    <string name="settings_other_section_background">Protezione in background</string>
+    <string name="settings_other_background_subtitle">Mantieni la sessione attiva in background</string>
+    <string name="settings_other_bg_pause_mode_title">Modalità di pausa in background</string>
+    <string name="settings_other_bg_pause_all_title">Metti in pausa tutti i processi</string>
+    <string name="settings_other_bg_pause_all_subtitle">Sospende tutti i processi — massimo risparmio della batteria (può causare problemi).</string>
+    <string name="settings_other_bg_pause_game_only_title">Metti in pausa solo il gioco</string>
+    <string name="settings_other_bg_pause_game_only_subtitle">Sospende solo il processo del gioco attivo; gli altri processi e servizi continuano a funzionare.</string>
+    <string name="settings_other_bg_pause_all_except_game_title">Metti in pausa tutto tranne il gioco</string>
+    <string name="settings_other_bg_pause_all_except_game_subtitle">Sospende tutti i processi e i servizi, ma mantiene attivo il processo del gioco.</string>
+    <string name="settings_other_bg_auto_pause_title">Pausa automatica della sessione</string>
+    <string name="settings_other_bg_auto_pause_subtitle">Mette automaticamente in pausa la sessione quando l\'app è in background o il dispositivo è bloccato.</string>
+    <string name="settings_other_bg_wakelock_title">Abilita un wake lock della CPU per migliorare la protezione in background</string>
+    <string name="settings_other_bg_wakelock_subtitle">Impedisce alla CPU di entrare in sospensione profonda mentre la sessione è in pausa. Aumenta il consumo della batteria, ma può migliorare la persistenza e la stabilità sui dispositivi con gestione aggressiva della batteria.</string>
+    <string name="settings_other_bg_heartbeat_title">Frequenza dell\'heartbeat (secondi)</string>
+    <string name="settings_other_bg_heartbeat_subtitle">Può migliorare la protezione dell\'app in background. Un valore di 0 disattiva la funzione. Più basso è il valore, maggiore è il potenziale consumo della batteria.</string>
+    <string name="settings_other_bg_heartbeat_disabled">Heartbeat disattivato</string>
+    <string name="settings_other_bg_heartbeat_minimum">Il minimo è 5 s — verrà corretto al salvataggio</string>
+    <string name="settings_other_bg_heartbeat_effective">Viene eseguito ogni %1$d s</string>
+    <!-- Notifications (keep-alive service) -->
+    <string name="fg_keep_alive_notification_content_container_paused">La sessione del contenitore è in pausa</string>
+    <string name="fg_keep_alive_notification_content_container_running">È in esecuzione una sessione del contenitore</string>
+    <string name="fg_keep_alive_notification_content_downloading_installing">Download e installazione dei componenti in corso</string>
+    <string name="fg_keep_alive_notification_content_steam_chat_running">Chat di Steam in esecuzione in background</string>
+    <string name="fg_keep_alive_notification_content_store_service_active">: servizio attivo</string>
+    <string name="fg_keep_alive_notification_content_store_services_active">: servizi attivi</string>
+    <string name="general_and">e</string>
 </resources>
 
