@@ -72,6 +72,7 @@ public class SessionKeepAliveService extends Service {
     private static final AtomicBoolean sessionActive = new AtomicBoolean(false);
     private static final HashSet<String> activeDownloads = new HashSet<>();
     private static final AtomicBoolean serviceRunning = new AtomicBoolean(false);
+    private static volatile boolean serviceStopping = false;
 
     private static volatile XEnvironment activeEnvironment;
     private static volatile XServer activeXServer;
@@ -238,7 +239,7 @@ public class SessionKeepAliveService extends Service {
     public static boolean isAppInBackground()  { return isAppInBackground;  }
     public static boolean isDeviceLocked()     { return isScreenLocked;      }
 
-    public static boolean isAppVisible() {
+    public static boolean isAppNotVisible() {
         return isAppInBackground || isScreenLocked;
     }
 
@@ -274,7 +275,7 @@ public class SessionKeepAliveService extends Service {
 
     private static boolean hasReason() {
         return sessionActive.get() || !activeDownloads.isEmpty() || !activeComponents.isEmpty() ||
-                (isAppVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit());
+                (isAppNotVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit());
     }
 
     // Single chokepoint for every caller (session, components, downloads).
@@ -285,7 +286,7 @@ public class SessionKeepAliveService extends Service {
         SessionKeepAliveService svc = instance;
 
         if (hasReason()) {
-            if (svc != null) {
+            if (svc != null && !serviceStopping) {
                 svc.ensureForeground();
             } else {
                 Context app = ctx.getApplicationContext();
@@ -299,6 +300,8 @@ public class SessionKeepAliveService extends Service {
             }
         } else if (svc != null) {
             LogManager.log(TAG, "No active reason remains; stopping keep-alive service", ctx);
+            serviceStopping = true;
+            serviceRunning.set(false);
             svc.stopForegroundCompat();
             svc.stopSelf();
         }
@@ -369,6 +372,12 @@ public class SessionKeepAliveService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
 
+        // Always promote to foreground first so Android does not consider
+        // the start a violation (and so the notification reflects current
+        // reasons), even if the command immediately tells us to stop.
+        ensureForeground();
+        serviceRunning.set(true);
+
         // Handle the Exit button from the notification
         if (ACTION_SESSION_STOP.equals(action)) {
             exitingFromNotification = true;
@@ -387,13 +396,7 @@ public class SessionKeepAliveService extends Service {
             return START_NOT_STICKY;
         }
 
-        // State is already current by the time this runs — every caller mutates
-        // it before this Intent is ever sent. This just reconciles the actual
-        // foreground/running status against that state.
-        if (hasReason()) {
-            ensureForeground();
-            serviceRunning.set(true);
-        } else {
+        if (!hasReason()) {
             Timber.tag(TAG).d("onStartCommand found no active reason; stopping immediately");
             stopForegroundCompat();
             stopSelf();
@@ -405,8 +408,8 @@ public class SessionKeepAliveService extends Service {
     private void ensureForeground() {
         boolean containerActive = sessionActive.get();
         // Only show Exit button if app is in background AND container is running or user wants to keep steam chat alive.
-//        boolean showExit = isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues, ANR crash for example.
-        boolean showExit = isAppVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit();
+//        boolean showExit = !isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues, ANR crash for example.
+        boolean showExit = isAppNotVisible() && (!containerActive && PrefManager.INSTANCE.getChatStayRunningOnExit());
 
         // Determine target activity: Game screen if active, else Main menu
         Class<?> targetActivity = containerActive ? XServerDisplayActivity.class : UnifiedActivity.class;
@@ -481,6 +484,7 @@ public class SessionKeepAliveService extends Service {
 
     @Override
     public void onDestroy() {
+        serviceStopping = false;
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
 //        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         stopHeartbeat();
@@ -495,6 +499,7 @@ public class SessionKeepAliveService extends Service {
             screenStateReceiver = null;
         }
 
+        notificationHelper.cancel(notificationId);
         serviceRunning.set(false);
         instance = null;
         super.onDestroy();
@@ -590,7 +595,7 @@ public class SessionKeepAliveService extends Service {
         }
 
         // 3. MEDIUM PRIORITY: Steam friends (if enabled)
-        if (PrefManager.INSTANCE.getChatStayRunningOnExit() && isAppVisible())
+        if (PrefManager.INSTANCE.getChatStayRunningOnExit() && isAppNotVisible())
             return instance.getString(R.string.fg_keep_alive_notification_content_steam_chat_running);
 
         // 4. LOW PRIORITY: Active store services
@@ -682,11 +687,11 @@ public class SessionKeepAliveService extends Service {
             }
 
             new Handler(Looper.getMainLooper()).post(() -> {
+                serviceRunning.set(false);
                 if (instance != null) {
                     instance.stopForegroundCompat();
                     instance.stopSelf();
                 }
-                serviceRunning.set(false);
                 // Final kill
                 new Handler(Looper.getMainLooper()).postDelayed(
                         () -> android.os.Process.killProcess(android.os.Process.myPid()), 500L);

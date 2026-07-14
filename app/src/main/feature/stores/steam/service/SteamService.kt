@@ -7862,7 +7862,7 @@ class SteamService : Service() {
         picsGetProductInfoJob?.cancel()
         messagePollerJob?.cancel()
         wnSession?.let { s -> runCatching { s.disconnect() } }
-        // ToDo: Check this Steam Friends code:
+        // ToDo: Check this Steam Friends code, is still needed?:
         /*scope.launch(Dispatchers.Main) {
             runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
                 .onFailure { Timber.w(it, "Failed to remove SteamService foreground state on background suspend") }
@@ -7870,6 +7870,9 @@ class SteamService : Service() {
                 .onFailure { Timber.w(it, "Failed to cancel SteamService notification on background suspend") }
         }*/
         // ToDo end.
+        // Commented out because Steam auto-start again in background after a few seconds.
+        /*runCatching { SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM) }
+            .onFailure { Timber.w(it, "Failed to remove SteamService foreground state during background") }*/
         return true
     }
 

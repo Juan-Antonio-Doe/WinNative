@@ -2436,11 +2436,9 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
         boolean cleaningUp = exitRequested.get() || sessionCleanupStarted.get() || activityDestroyed.get();
 
-        if (!cleaningUp) {
-            if (autoPauseContainer) ProcessHelper.pauseAllWineProcesses();
-        }
-
         if (!cleaningUp && !isInPictureInPictureMode()) {
+            if (autoPauseContainer) ProcessHelper.pauseAllWineProcesses();
+
             if (environment != null) {
                 environment.onPause();
                 xServerView.onPause();
