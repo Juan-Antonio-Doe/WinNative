@@ -5504,10 +5504,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             case R.id.main_menu_pause:
                 if (isPaused) {
                     ProcessHelper.resumeAllWineProcesses();
-                    SessionKeepAliveService.onResumeSession(this);
                 }
                 else {
-                    SessionKeepAliveService.onPauseSession(this);
                     ProcessHelper.pauseAllWineProcesses();
                     if (touchpadView != null) touchpadView.resetInputState();
                     if (inputControlsView != null) inputControlsView.cancelActiveTouches();

@@ -94,8 +94,7 @@ class EpicService : Service() {
                 val intent = Intent(context, EpicService::class.java)
                 intent.action = ACTION_SYNC_LIBRARY
 
-                // Just start as a normal service. KeepAliveService should protect this.
-                context.startService(intent)
+                startEpicService(context, intent)
                 return
             }
 
@@ -111,15 +110,23 @@ class EpicService : Service() {
                 Timber.tag("EPIC").i("Starting service without sync - throttled (${remainingMinutes}min remaining)")
             }
 
-            // Just start as a normal service. KeepAliveService should protect this.
-            context.startService(intent)
+            startEpicService(context, intent)
         }
 
         fun triggerLibrarySync(context: Context) {
             Timber.tag("EPIC").i("Triggering manual library sync (bypasses throttle)")
             val intent = Intent(context, EpicService::class.java)
             intent.action = ACTION_MANUAL_SYNC
-            context.startService(intent)
+            startEpicService(context, intent)
+        }
+
+        fun startEpicService(context: Context, intent: Intent) {
+            try {
+                // Just start as a normal service. KeepAliveService should protect this.
+                context.startService(intent)
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to start EpicService")
+            }
         }
 
         fun stop() {

@@ -246,7 +246,7 @@ class DebugFragment : Fragment() {
                 eventWatchLog = preferences.getBoolean("enable_event_watch_log", false),
                 tagFilterMode = LogManager.getTagFilterMode(),
                 selectedTags = LogManager.getSelectedTags().toList(),
-                customTags = LogManager.getAllKnownTags().filterNot { it in GeneratedLogTags.TAGS },
+                customTags = LogManager.getCachedCustomTags(),
 
                 wineDebug = preferences.getBoolean("enable_wine_debug", false),
                 wineChannels = channels,

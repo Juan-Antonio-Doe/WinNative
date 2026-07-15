@@ -104,7 +104,6 @@ public class SessionKeepAliveService extends Service {
     private NotificationHelper notificationHelper;
     private int notificationId = -1;
     private static final String NOTIFICATION_ID_NAME = "winnative.keepAlive";
-    private static boolean isActivityVisible = false;
 
     // Tracks active components and their notification messages
     private static final Map<String, String> activeComponents = new ConcurrentHashMap<>();
@@ -117,7 +116,7 @@ public class SessionKeepAliveService extends Service {
         if (ctx == null) return;
         prefs = PreferenceManager.getDefaultSharedPreferences(ctx.getApplicationContext());
         if (prefs != null) {
-            int frequency = prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 120);
+            int frequency = prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0);
             if (frequency > 0) {
                 if (frequency < 5)
                     heartbeat_interval_ms = 5 * 1000L;
@@ -128,7 +127,6 @@ public class SessionKeepAliveService extends Service {
 
         sessionActive.set(true);
         isContainerPaused = false;
-        isActivityVisible = true;
         exitingFromNotification = false;
         LogManager.log(TAG, "startSession", ctx);
         updateForegroundState(ctx);
@@ -141,7 +139,6 @@ public class SessionKeepAliveService extends Service {
             return;
         }
         isContainerPaused = true;
-        isActivityVisible = false;
         LogManager.log(TAG, "onPauseSession", ctx);
         if (instance != null) {
             instance.acquireWakeLock();
@@ -158,7 +155,6 @@ public class SessionKeepAliveService extends Service {
             return;
         }
         isContainerPaused = false;
-        isActivityVisible = true;
         LogManager.log(TAG, "onResumeSession", ctx);
         if (instance != null) {
             instance.stopHeartbeat();
@@ -388,7 +384,19 @@ public class SessionKeepAliveService extends Service {
             // and it will update the notification to the "Chat" state.
             if (sessionActive.get() && chatStayAlive) {
                 stopSession(this);
-                cleanUpSession(this, "Exit button pressed");
+
+                // Move the blocking cleanup to a background thread to prevent ANRs.
+                // We use a small delay to allow stopSession's environment teardown to start.
+                new Thread(() -> {
+                    try {
+                        Thread.sleep(1000L);
+                        cleanUpSession(getApplicationContext(), "Exit button pressed");
+                    } catch (InterruptedException ignored) {
+                        Thread.currentThread().interrupt();
+                    } catch (Throwable t) {
+                        LogManager.logW(TAG, "Background session cleanup failed", t, getApplicationContext());
+                    }
+                }, "SessionExitCleanup").start();
             } else {
                 // Otherwise, perform a full app shutdown.
                 closeApp(this);
@@ -534,7 +542,7 @@ public class SessionKeepAliveService extends Service {
 
     private void startHeartbeat() {
         if (prefs == null) return;
-        if (heartbeatRunning || prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0) <= 0) return;
+        if (heartbeatRunning || !prefs.getBoolean("enable_background_wakelock", false) || prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0) <= 0) return;
         heartbeatRunning = true;
         Thread t = new Thread(() -> {
             while (heartbeatRunning && sessionActive.get() && isContainerPaused) {
@@ -664,7 +672,6 @@ public class SessionKeepAliveService extends Service {
     private static void resetLocalState() {
         sessionActive.set(false);
         isContainerPaused = false;
-        isActivityVisible = false;
         synchronized (activeDownloads) { activeDownloads.clear(); }
         activeComponents.clear();
     }

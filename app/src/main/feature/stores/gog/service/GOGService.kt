@@ -99,8 +99,7 @@ class GOGService : Service() {
                 val intent = Intent(context, GOGService::class.java)
                 intent.action = ACTION_SYNC_LIBRARY
 
-                // Just start as a normal service. KeepAliveService should protect this.
-                context.startService(intent)
+                startGOGService(context, intent)
                 return
             }
 
@@ -116,15 +115,23 @@ class GOGService : Service() {
                 Timber.d("[GOGService] Starting service without sync - throttled (${remainingMinutes}min remaining)")
             }
 
-            // Just start as a normal service. KeepAliveService should protect this.
-            context.startService(intent)
+            startGOGService(context, intent)
         }
 
         fun triggerLibrarySync(context: Context) {
             Timber.i("[GOGService] Triggering manual library sync (bypasses throttle)")
             val intent = Intent(context, GOGService::class.java)
             intent.action = ACTION_MANUAL_SYNC
-            context.startService(intent)
+            startGOGService(context, intent)
+        }
+
+        fun startGOGService(context: Context, intent: Intent) {
+            try {
+                // Just start as a normal service. KeepAliveService should protect this.
+                context.startService(intent)
+            } catch (e: Exception) {
+                Timber.e(e, "Failed to start GOGService")
+            }
         }
 
         fun stop() {

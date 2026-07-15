@@ -7,6 +7,8 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
@@ -63,6 +65,22 @@ object LogManager {
         "GuestProgramLauncherComponent",
         "XServerLeakCheck",
     )
+
+    private const val EVENT_WATCH_TIMEOUT_MS = 90 * 60 * 1000L // 1.5 hours
+    private val watchTimeoutHandler = Handler(Looper.getMainLooper())
+    private val stopWatchTask = Runnable {
+        Timber.i("Event watch timeout reached. Stopping.")
+        stopEventWatch()
+
+        // Auto-disable the toggle in preferences/UI just in case the user may have forgotten
+        // that the logger was enabled, to avoid wasting battery life.
+        appContext?.let { context ->
+            PreferenceManager.getDefaultSharedPreferences(context).edit {
+                putBoolean(PREF_ENABLE_EVENT_WATCH_LOG, false)
+            }
+        }
+    }
+
 
     private const val PREF_ENABLE_APP_DEBUG = "enable_app_debug"
     private const val PREF_ENABLE_EXIT_REASON_LOG = "enable_exit_reason_log"
@@ -261,6 +279,9 @@ object LogManager {
         (GeneratedLogTags.TAGS + DEVELOPER_TAGS + BASELINE_SYSTEM_TAGS.keys + cachedCustomTags)
             .distinct()
             .sorted()
+
+    @JvmStatic
+    fun getCachedCustomTags(): List<String> = cachedCustomTags.sorted()
 
     @JvmStatic
     fun addCustomTag(context: Context, tag: String) {
@@ -563,8 +584,10 @@ object LogManager {
             }
 
             eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
-
             closeProcessStdin(eventWatchProcess)
+
+            // Schedule a timeout to avoid hanging indefinitely if the user forget to disable this log.
+            watchTimeoutHandler.postDelayed(stopWatchTask, EVENT_WATCH_TIMEOUT_MS)
         } catch (e: Exception) {
             logE(TAG, null, context) { "Failed to start event watch: ${e.message}" }
         }
@@ -572,6 +595,9 @@ object LogManager {
 
     @JvmStatic
     fun stopEventWatch() {
+        // Cancel the pending timeout task
+        watchTimeoutHandler.removeCallbacks(stopWatchTask)
+
         try {
             eventWatchProcess?.let(::destroyProcess)
             eventWatchProcess = null
@@ -848,7 +874,14 @@ object LogManager {
 
     private fun persistKeys(prefs: SharedPreferences, prefKey: String, keys: Set<String>) {
         prefs.edit {
-            putString(prefKey, keys.sortedDescending().take(20).joinToString(","))
+            // Sort by the numeric timestamp (the last part of the key) instead of alphabetically.
+            // This ensures we keep the 20 most recent events regardless of whether they
+            // are "exit_" or "crash_".
+            val sortedKeys = keys.sortedByDescending { key ->
+                key.substringAfterLast('_').toLongOrNull() ?: 0L
+            }.take(20)
+
+            putString(prefKey, sortedKeys.joinToString(","))
         }
     }
 

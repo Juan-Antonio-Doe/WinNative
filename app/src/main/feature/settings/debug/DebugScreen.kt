@@ -136,10 +136,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
 
@@ -374,7 +376,7 @@ fun DebugScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
-                        .focusProperties { canFocus = state.appDebug  || state.eventWatchLog },
+                        .focusProperties { canFocus = state.appDebug || state.eventWatchLog },
                 )
             }
 
@@ -527,7 +529,8 @@ private fun SettingsToggleCard(
                         onActivate = { onCheckedChange(!checked) },
                         highlightColor = NavHighlight,
                         tapToSelect = true,
-                    ).padding(horizontal = 14.dp, vertical = 11.dp),
+                    )
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -554,7 +557,9 @@ private fun SettingsToggleCard(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                modifier = Modifier.scale(0.78f).focusProperties { canFocus = false },
+                modifier = Modifier
+                    .scale(0.78f)
+                    .focusProperties { canFocus = false },
                 colors =
                     outlinedSwitchColors(
                         accentColor = accentColor,
@@ -990,7 +995,8 @@ private fun SmallActionButton(
                         },
                         onTap = { onClick() },
                     )
-                }.padding(horizontal = 11.dp, vertical = 6.dp),
+                }
+                .padding(horizontal = 11.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -1270,18 +1276,45 @@ private fun LogTagFilterDialog(
                         )
                         Spacer(Modifier.height(8.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
+                            // Simple state to track focus for the border color
+                            var isTextFieldFocused by remember { mutableStateOf(false) }
+
+                            // Use BasicTextField for full control over vertical padding
+                            androidx.compose.foundation.text.BasicTextField(
                                 value = newTagText,
                                 onValueChange = { newTagText = it },
-                                placeholder = { Text(stringResource(R.string.settings_debug_add_custom_tag_hint), fontSize = 12.sp) },
                                 singleLine = true,
-                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp),
-                                modifier = Modifier.weight(1f).height(38.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = Accent,
-                                    unfocusedBorderColor = CardBorder
-                                )
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    color = TextPrimary,
+                                    fontSize = 13.sp
+                                ),
+                                cursorBrush = androidx.compose.ui.graphics.SolidColor(Accent),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .onFocusChanged { isTextFieldFocused = it.isFocused },
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier
+                                            .background(Color.Transparent, RoundedCornerShape(8.dp))
+                                            .border(
+                                                width = 1.dp,
+                                                color = if (isTextFieldFocused) Accent else CardBorder,
+                                                shape = RoundedCornerShape(8.dp)
+                                            )
+                                            .padding(horizontal = 12.dp),
+                                        contentAlignment = Alignment.CenterStart
+                                    ) {
+                                        if (newTagText.isEmpty()) {
+                                            Text(
+                                                text = stringResource(R.string.settings_debug_add_custom_tag_hint),
+                                                fontSize = 12.sp,
+                                                color = TextSecondary
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
                             )
                             Spacer(Modifier.width(8.dp))
                             SmallActionButton(
@@ -1515,7 +1548,11 @@ private fun RowScope.LogActionButton(
                 .clip(RoundedCornerShape(12.dp))
                 .background(CardDark)
                 .border(1.dp, accentColor.copy(alpha = 0.22f), RoundedCornerShape(12.dp))
-                .paneNavItem(cornerRadius = 12.dp, onActivate = { onClick() }, highlightColor = NavHighlight)
+                .paneNavItem(
+                    cornerRadius = 12.dp,
+                    onActivate = { onClick() },
+                    highlightColor = NavHighlight
+                )
                 .pointerInput(onClick) {
                     detectTapGestures(
                         onPress = {
@@ -1525,7 +1562,8 @@ private fun RowScope.LogActionButton(
                         },
                         onTap = { onClick() },
                     )
-                }.padding(horizontal = 10.dp, vertical = 7.dp),
+                }
+                .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -1732,7 +1770,8 @@ private fun LogsHeaderShareAll(onClick: () -> Unit) {
                         },
                         onTap = { onClick() },
                     )
-                }.padding(horizontal = 10.dp, vertical = 6.dp),
+                }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -1777,7 +1816,8 @@ private fun LogsHeaderDownloadAll(onClick: () -> Unit) {
                         },
                         onTap = { onClick() },
                     )
-                }.padding(horizontal = 10.dp, vertical = 6.dp),
+                }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -1822,7 +1862,8 @@ private fun LogsHeaderDeleteAll(onClick: () -> Unit) {
                         },
                         onTap = { onClick() },
                     )
-                }.padding(horizontal = 10.dp, vertical = 6.dp),
+                }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -1973,7 +2014,8 @@ private fun LogFileRow(
                     .paneNavItem(cornerRadius = 8.dp, onActivate = { onOpen() })
                     .pointerInput(entry.absolutePath) {
                         detectTapGestures(onTap = { onOpen() })
-                    }.padding(horizontal = 4.dp, vertical = 2.dp),
+                    }
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
         ) {
             Text(
                 text = entry.name,
@@ -2218,7 +2260,10 @@ private fun LogContentBody(
                             .clip(RoundedCornerShape(10.dp))
                             .background(SurfaceDark)
                             .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
-                            .verticalScrollbar(logScrollState, TextSecondary.copy(alpha = 0.6f)) { scrollbarAlpha }
+                            .verticalScrollbar(
+                                logScrollState,
+                                TextSecondary.copy(alpha = 0.6f)
+                            ) { scrollbarAlpha }
                             .padding(10.dp)
                             .verticalScroll(logScrollState),
                 ) {
