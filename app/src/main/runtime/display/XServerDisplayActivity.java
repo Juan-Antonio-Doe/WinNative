@@ -329,6 +329,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
     };
 
+    private final Runnable stopEventWatchTask = LogManager::stopEventWatch;
+
     private void fireDrawerStickDir(int dir) {
         if (drawerStateHolder == null) return;
         if (!drawerStateHolder.isPaneOpen()) {
@@ -919,8 +921,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         super.onCreate(savedInstanceState);
         AppUtils.hideSystemUI(this);
         AppUtils.keepScreenOn(this);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
-//            setShowWhenLocked(true);
+
+        // SHOW THE CONTAINER/GAME ON TOP OF LOCK SCREEN
+        // Completely disabled, because the purpose of this code was to prevent the container
+        // from being killed by the OS, but it didn’t work. And it became a nuisance.
+        /*if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true);
             setTurnScreenOn(true);
         } else {
             getWindow().addFlags(
@@ -939,7 +945,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 Log.w(TAG,
                     "requestDismissKeyguard failed: " + t.getMessage());
             }
-        }
+        }*/
+
         DebugFragment.Companion.cleanupSharedLogs();
         com.winlator.cmod.runtime.system.LogManager.prepareForNewSession(this);
 
@@ -2416,12 +2423,17 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         SessionKeepAliveService.onResumeSession(this);
 
         LogManager.log(TAG, "Session resumed", getApplicationContext());
-        handler.postDelayed(LogManager::stopEventWatch, 8000);
+        // Cancel any pending stop task and re-schedule it
+        handler.removeCallbacks(stopEventWatchTask);
+        handler.postDelayed(stopEventWatchTask, 8000);
     }
 
     @Override
     public void onPause() {
-        LogManager.startEventWatch(getApplicationContext(), "onPause");
+        // Cancel the scheduled stop immediately so it doesn't kill
+        // the watcher we are about to start below.
+        handler.removeCallbacks(stopEventWatchTask);
+        LogManager.startEventWatch(getApplicationContext(), "XServerDisplayActivity.onPause");
         LogManager.log(TAG, "Session paused; entering background", getApplicationContext());
         SessionKeepAliveService.onPauseSession(this);
 
@@ -3112,6 +3124,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             // XServerDisplayActivity and surface UnifiedActivity naturally, all
             // while the task stays behind whatever the user was doing.
             moveTaskToBack(true);
+            finish();
             return;
         }
 

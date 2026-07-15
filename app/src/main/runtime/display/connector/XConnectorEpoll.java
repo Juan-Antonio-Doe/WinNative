@@ -147,33 +147,50 @@ public class XConnectorEpoll implements Runnable {
       return;
     }
 
+    // Winner of this check handles the teardown.
+    if (!client.markKillingOnce()) return;  // already being/been torn down by another thread
+
     int fd = client.clientSocket != null ? client.clientSocket.fd : -1;
     // Log immediately on entry: fd, reason, whether multithreadedClients - Commented out to avoid noise
     // LogManager.logI(TAG, "killConnection entry: fd=" + fd + " reason=\"" + reason + "\" multithreadedClients=" + multithreadedClients);
 
-    if (!client.markKillingOnce()) return; // already being/been torn down by another thread
+    // FIX: Remove from map FIRST. This fixes:
+    // 1. Busy-spinning in shutdown() if it lost the race.
+    // 2. FD-reuse race where a new connection on the same FD could be deleted by this cleanup.
+    synchronized (connectedClients) {
+      connectedClients.remove(fd);
+    }
+
     client.connected = false;
     connectionHandler.handleConnectionShutdown(client);
     if (multithreadedClients) {
-      if (Thread.currentThread() != client.pollThread) {
+      if (client.pollThread != null && Thread.currentThread() != client.pollThread) {
         client.requestShutdown();
 
-        while (client.pollThread.isAlive()) {
-          try {
-            client.pollThread.join();
-          } catch (InterruptedException e) {
+        // FIX: Uninterruptible join. Proceeding after an InterruptedException
+        // would free buffers while the poll thread is potentially still alive.
+        boolean interrupted = Thread.interrupted();
+        try {
+          while (client.pollThread.isAlive()) {
+            try {
+              client.pollThread.join();
+            } catch (InterruptedException e) {
+              interrupted = true;
+            }
+          }
+        } finally {
+          if (interrupted) {
             // Restore interrupt status and log interruption
             Thread.currentThread().interrupt();
             LogManager.logW(TAG,
                     "Interrupted while joining pollThread for fd=" + fd + " reason=\"" + reason + "\"");
-            break;
           }
         }
-
         client.pollThread = null;
       }
       closeFd(client.shutdownFd);
-    } else removeFdFromEpoll(epollFd, client.clientSocket.fd);
+    } else removeFdFromEpoll(epollFd, fd);
+
     // Free direct byte buffers and ancillary FDs to avoid resource leak warnings
     try {
       client.releaseIOStreams();
@@ -202,8 +219,11 @@ public class XConnectorEpoll implements Runnable {
     while (true) {
       Client client;
       synchronized (connectedClients) {
-        if (connectedClients.size() == 0) break;
-        client = connectedClients.valueAt(connectedClients.size() - 1);
+        int size = connectedClients.size();
+        if (size == 0) break;
+        // Pop from the map here to prevent busy-spinning if killConnection returns early.
+        client = connectedClients.valueAt(size - 1);
+        connectedClients.removeAt(size - 1);
       }
       killConnection(client, "connector shutdown");
     }

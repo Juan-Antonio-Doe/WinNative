@@ -310,7 +310,6 @@ public class SessionKeepAliveService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
-        instance = this;
 
         // Initialize the helper using the application context
         notificationHelper = new NotificationHelper(getApplicationContext());
@@ -326,6 +325,9 @@ public class SessionKeepAliveService extends Service {
             // calling release() without a matching acquire() won't throw.
             wakeLock.setReferenceCounted(false);
         }
+
+        // Now that fields are ready, publish the instance
+        instance = this;
 
         // Seed initial state from current lifecycle rather than assuming foreground.
         isAppInBackground = !androidx.lifecycle.ProcessLifecycleOwner.get()
@@ -416,7 +418,7 @@ public class SessionKeepAliveService extends Service {
     private void ensureForeground() {
         boolean containerActive = sessionActive.get();
         // Only show Exit button if app is in background AND container is running or user wants to keep steam chat alive.
-//        boolean showExit = !isAppVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues, ANR crash for example.
+//        boolean showExit = isAppNotVisible() && (containerActive || PrefManager.INSTANCE.getChatStayRunningOnExit());    // Disabled because container "Exit" causes too much issues, ANR crash for example.
         boolean showExit = isAppNotVisible() && (!containerActive && PrefManager.INSTANCE.getChatStayRunningOnExit());
 
         // Determine target activity: Game screen if active, else Main menu
@@ -492,7 +494,11 @@ public class SessionKeepAliveService extends Service {
 
     @Override
     public void onDestroy() {
+        // Null the instance immediately to close the window for other threads
+        instance = null;
         serviceStopping = false;
+        serviceRunning.set(false);
+
         if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
 //        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         stopHeartbeat();
@@ -507,9 +513,9 @@ public class SessionKeepAliveService extends Service {
             screenStateReceiver = null;
         }
 
-        notificationHelper.cancel(notificationId);
-        serviceRunning.set(false);
-        instance = null;
+        if (notificationHelper != null) {
+            notificationHelper.cancel(notificationId);
+        }
         super.onDestroy();
     }
 
@@ -592,25 +598,30 @@ public class SessionKeepAliveService extends Service {
 
     @NonNull
     private static String getNotificationContent() {
+        // Capture a local reference to avoid NPE if instance is nulled concurrently
+        SessionKeepAliveService svc = instance;
+        if (svc == null) return "WinNative is running in the background";
+
         // 1. HIGHEST PRIORITY: The game/container
         if (sessionActive.get()) {
-            return isContainerPaused ? instance.getString(R.string.fg_keep_alive_notification_content_container_paused) : instance.getString(R.string.fg_keep_alive_notification_content_container_running);
+            return isContainerPaused ? svc.getString(R.string.fg_keep_alive_notification_content_container_paused) : svc.getString(R.string.fg_keep_alive_notification_content_container_running);
         }
 
         // 2. MEDIUM PRIORITY: Downloads
         synchronized (activeDownloads) {
-            if (!activeDownloads.isEmpty()) return instance.getString(R.string.fg_keep_alive_notification_content_downloading_installing);
+            if (!activeDownloads.isEmpty()) return svc.getString(R.string.fg_keep_alive_notification_content_downloading_installing);
         }
 
         // 3. MEDIUM PRIORITY: Steam friends (if enabled)
         if (PrefManager.INSTANCE.getChatStayRunningOnExit() && isAppNotVisible())
-            return instance.getString(R.string.fg_keep_alive_notification_content_steam_chat_running);
+            return svc.getString(R.string.fg_keep_alive_notification_content_steam_chat_running);
 
         // 4. LOW PRIORITY: Active store services
+        // Fix: Copy keys first to avoid IndexOutOfBoundsException if map is cleared between check and access
+        List<String> names = new ArrayList<>(activeComponents.keySet());
         if (!activeComponents.isEmpty()) {
             // Define the priority order
             List<String> priority = Arrays.asList(COMPONENT_STEAM, COMPONENT_EPIC, COMPONENT_GOG);
-            List<String> names = new ArrayList<>(activeComponents.keySet());
             names.sort((a, b) -> {
                 int idxA = priority.indexOf(a);
                 int idxB = priority.indexOf(b);
@@ -646,7 +657,7 @@ public class SessionKeepAliveService extends Service {
                     joinedNames = sb.toString();
             }
 
-            String suffix = (size == 1) ? instance.getString(R.string.fg_keep_alive_notification_content_store_service_active) : instance.getString(R.string.fg_keep_alive_notification_content_store_services_active);
+            String suffix = (size == 1) ? svc.getString(R.string.fg_keep_alive_notification_content_store_service_active) : svc.getString(R.string.fg_keep_alive_notification_content_store_services_active);
             return joinedNames + suffix;
         }
         return "WinNative is running in the background";

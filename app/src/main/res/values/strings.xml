@@ -1603,7 +1603,7 @@ Installed path:
     <string name="fg_keep_alive_notification_content_container_running">There is a container session running</string>
     <string name="fg_keep_alive_notification_content_downloading_installing">Downloading and installing components</string>
     <string name="fg_keep_alive_notification_content_steam_chat_running">Steam chat running in background</string>
-    <string name="fg_keep_alive_notification_content_store_service_active"> service is active</string>
-    <string name="fg_keep_alive_notification_content_store_services_active"> services are active</string>
+    <string name="fg_keep_alive_notification_content_store_service_active">": service is active"</string>
+    <string name="fg_keep_alive_notification_content_store_services_active">": services are active"</string>
     <string name="general_and">and</string>
 </resources>

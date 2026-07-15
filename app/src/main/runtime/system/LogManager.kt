@@ -22,6 +22,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.core.content.edit
+import com.winlator.cmod.BuildConfig
 
 object LogManager {
     private const val TAG = "LogManager"
@@ -166,8 +167,12 @@ object LogManager {
             crashHandlerInitialized = true
         }
 
-        logLastExitReasons(app)     // Capture previous exit reasons if toggle is enabled.
-        runPostMortemIfNeeded(app)  // Capture unexpected crashes at start if crash toggle is disabled.
+        // Move heavy I/O processing (exit reasons, ANR traces, post-mortems)
+        // to a dedicated background thread to prevent ANRs in onCreate.
+        Thread({
+            logLastExitReasons(app)
+            runPostMortemIfNeeded(app)      // Capture previous exit reasons if toggle is enabled.
+        }, "LogManager-StartupIO").start()    // Capture unexpected crashes at start if crash toggle is disabled.
     }
 
     private fun refreshCaches(context: Context) {
@@ -230,7 +235,7 @@ object LogManager {
             val uri = Uri.parse(uriStr)
             FileUtils.getFilePathFromUri(ctx, uri) ?: uriStr
         } catch (e: Exception) {
-            Timber.tag(TAG).w("Failed to resolve winlator_path_uri ($uriStr): ${e.message}")
+            logW(TAG,e, ctx) { "Failed to resolve winlator_path_uri ($uriStr): ${e.message}" }
             uriStr
         }
     }
@@ -363,7 +368,7 @@ object LogManager {
                 )
             closeProcessStdin(logcatProcess)
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Failed to start logcat: ${e.message}")
+            logE(TAG,e, context) { "Failed to start logcat: ${e.message}" }
         }
     }
 
@@ -377,7 +382,7 @@ object LogManager {
             logcatProcess?.let(::destroyProcess)
             logcatProcess = null
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Failed to stop logcat: ${e.message}")
+            logE(TAG,e) { "Failed to stop logcat: ${e.message}" }
         }
     }
 
@@ -402,7 +407,7 @@ object LogManager {
             closeProcessStdin(appLogProcess)
             Timber.i("Application debug logging started (PID=$pid)")
         } catch (e: Exception) {
-            Timber.e("Failed to start application logging: ${e.message}")
+            logE(TAG,e) { "Failed to start application logging: ${e.message}" }
         }
     }
 
@@ -412,7 +417,7 @@ object LogManager {
             appLogProcess?.let(::destroyProcess)
             appLogProcess = null
         } catch (e: Exception) {
-            Timber.e("Failed to stop application logging: ${e.message}")
+            logE(TAG,e) { "Failed to stop application logging: ${e.message}" }
         }
     }
 
@@ -511,21 +516,37 @@ object LogManager {
 
     inline fun logW(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
         if (!cachedAppDebugEnabled) return
-        baseLog(Level.WARN, tag, message(), null, context)
+        baseLog(Level.WARN, tag, message(), t, context)
     }
 
     inline fun logE(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
         if (!cachedAppDebugEnabled) return
-        baseLog(Level.ERROR, tag, message(), null, context)
+        baseLog(Level.ERROR, tag, message(), t, context)
     }
 
     fun baseLog(level: Level, tag: String, message: String, t: Throwable?, context: Context?) {
-        // Mirrors Android Log so this can drop in for Log.* call sites.
+        val hasTree = Timber.forest().isNotEmpty()
+
+        // Mirrors Timber Log so this can drop in for Log.* call sites.
         when (level) {
             Level.DEBUG -> Timber.tag(tag).d(message)
             Level.INFO -> Timber.tag(tag).i(message)
-            Level.WARN -> if (t != null) Timber.tag(tag).w(t, message) else Timber.tag(tag).w(message)
-            Level.ERROR -> if (t != null) Timber.tag(tag).e(t, message) else Timber.tag(tag).e(message)
+            Level.WARN ->  {
+                if (hasTree) {
+                    if (t != null) Timber.tag(tag).w(t, message) else Timber.tag(tag).w(message)
+                }
+                else {
+                    if (t != null) Log.w(tag, message, t) else Log.w(tag, message)
+                }
+            }
+            Level.ERROR -> {
+                if (hasTree) {
+                    if (t != null) Timber.tag(tag).e(t, message) else Timber.tag(tag).e(message)
+                }
+                else {  // Fallback to Android Log for when Timber is not available
+                    if (t != null) Log.e(tag, message, t) else Log.e(tag, message)
+                }
+            }
         }
 
         if (!cachedAppDebugEnabled) return
@@ -541,7 +562,8 @@ object LogManager {
         try {
             File(getLogsDir(context), fileName).appendText("${timestampFormat.format(Date())} $level: $message\n")
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Failed to append to $fileName: ${e.message}")
+            // Need to be Log for when baseLog and Timber doesn't work.
+            Log.e(TAG, "Failed to append to $fileName: ${e.message}", e)
         }
     }
 
@@ -566,31 +588,33 @@ object LogManager {
         if (!hasReadLogs) logW(TAG, null, context) { "READ_LOGS permission not granted, pause watch may not capture system logs" }
 
         stopEventWatch()
-        try {
-            // Wipe the historical buffer so this file only contains lines from
-            // this pause window onward — not hours of unrelated backlog.
-            Runtime.getRuntime().exec(arrayOf("logcat", "-c")).waitFor()
+        Thread({
+            try {
+                // Wipe the historical buffer so this file only contains lines from
+                // this pause window onward — not hours of unrelated backlog.
+                Runtime.getRuntime().exec(arrayOf("logcat", "-c")).waitFor()
 
-            val safeLabel = label.ifBlank { "manual" }.replace(Regex("[^A-Za-z0-9_-]"), "_")
-            val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
-            val file = File(getLogsDir(context), "event_${safeLabel}_$stamp.log")
-            appendLine(context, file.name, "I/$TAG", "=== event watch started ($safeLabel) ===")
+                val safeLabel = label.ifBlank { "manual" }.replace(Regex("[^A-Za-z0-9_-]"), "_")
+                val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+                val file = File(getLogsDir(context), "event_${safeLabel}_$stamp.log")
+                appendLine(context, file.name, "I/$TAG", "=== event watch started ($safeLabel) ===")
 
-            val command = mutableListOf("logcat", "-v", "threadtime", "-f", file.absolutePath)
-            command.addAll(buildLogcatFilterSpecArgs())
-            manualTextFilter?.let {
-                command.add("-e")
-                command.add(it)
+                val command = mutableListOf("logcat", "-v", "threadtime", "-f", file.absolutePath)
+                command.addAll(buildLogcatFilterSpecArgs())
+                manualTextFilter?.let {
+                    command.add("-e")
+                    command.add(it)
+                }
+
+                eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
+                closeProcessStdin(eventWatchProcess)
+
+                // Schedule a timeout to avoid hanging indefinitely if the user forget to disable this log.
+                watchTimeoutHandler.postDelayed(stopWatchTask, EVENT_WATCH_TIMEOUT_MS)
+            } catch (e: Exception) {
+                logE(TAG, e, context) { "Failed to start event watch: ${e.message}" }
             }
-
-            eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
-            closeProcessStdin(eventWatchProcess)
-
-            // Schedule a timeout to avoid hanging indefinitely if the user forget to disable this log.
-            watchTimeoutHandler.postDelayed(stopWatchTask, EVENT_WATCH_TIMEOUT_MS)
-        } catch (e: Exception) {
-            logE(TAG, null, context) { "Failed to start event watch: ${e.message}" }
-        }
+        }, "LogManager-EventWatch").start()
     }
 
     @JvmStatic
@@ -602,7 +626,7 @@ object LogManager {
             eventWatchProcess?.let(::destroyProcess)
             eventWatchProcess = null
         } catch (e: Exception) {
-            Timber.e("Failed to stop pause watch: ${e.message}")
+            logE(TAG,e) { "Failed to stop pause watch: ${e.message}" }
         }
     }
 
@@ -733,7 +757,7 @@ object LogManager {
                                 appendLine(ctx, CRASH_FILE, "I/$TAG", "Historical $type (No trace available) pid=${info.pid} desc=${info.description}")
                             }
                         } catch (e: Exception) {
-                            Timber.tag(TAG).e("Failed to read historical trace: ${e.message}")
+                            logE(TAG,e, context) { "Failed to read historical trace: ${e.message}" }
                         }
                     }
                     // Mark as crash-processed to avoid re-scanning non-crash reasons
@@ -746,7 +770,7 @@ object LogManager {
                 persistKeys(prefs, PREF_LOGGED_EXIT_KEYS, loggedKeys)
             }
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Failed to read exit reasons: ${e.message}")
+            logE(TAG,e, context) { "Failed to read exit reasons: ${e.message}" }
         }
     }
 
@@ -783,9 +807,9 @@ object LogManager {
             }
 
             file.writeText(crashInfo)
-            Timber.e(throwable, "Crash logged to $fileName")
+            logE(TAG, throwable) { "Crash logged to $fileName" }
         } catch (e: Exception) {
-            Timber.e(e, "Failed to log crash")
+            logE(TAG,e, context) { "Failed to log crash" }
         }
     }
 
@@ -826,7 +850,7 @@ object LogManager {
             }
             if (wrote) persistKeys(prefs, PREF_POST_MORTEM_KEYS, loggedKeys)
         } catch (e: Exception) {
-            Timber.tag(TAG).e("Post-mortem check failed: ${e.message}")
+            logE(TAG,e, context) { "Post-mortem check failed: ${e.message}" }
         }
     }
 
