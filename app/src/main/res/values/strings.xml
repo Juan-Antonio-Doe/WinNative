@@ -1145,7 +1145,7 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="settings_other_bg_pause_all_title">Pause all processes</string>
     <string name="settings_other_bg_pause_all_subtitle">Suspends all processes — Maximum battery saving (May cause issues).</string>
     <string name="settings_other_bg_pause_game_only_title">Pause only the game</string>
-    <string name="settings_other_bg_pause_game_only_subtitle">Suspends only the active game process; other processes and services stays running.</string>
+    <string name="settings_other_bg_pause_game_only_subtitle">Suspends only the active game process; other processes and services stay running.</string>
     <string name="settings_other_bg_pause_all_except_game_title">Pause all except the game</string>
     <string name="settings_other_bg_pause_all_except_game_subtitle">Suspends all processes and services but keeps the game process active.</string>
     <string name="settings_other_bg_auto_pause_title">Auto pause session</string>

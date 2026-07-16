@@ -167,6 +167,8 @@ class OtherSettingsFragment : Fragment() {
                         },
                         onEnableBackgroundSessionChanged = { checked ->
                             preferences.edit { putBoolean("enable_background_session", checked) }
+                            // This is true if Store services are already running, but it isn't when is auto-enabled on wizard.
+                            WinToast.show(ctx, R.string.settings_general_take_effect_next_startup)
                             refresh()
                         },
                         onEnableAutoPauseChanged = { checked ->

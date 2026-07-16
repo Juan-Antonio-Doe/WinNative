@@ -6943,7 +6943,6 @@ class SteamService : Service() {
 
         fun start(context: Context) {
             try {
-                val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(context)
                 val intent = Intent(context, SteamService::class.java)
 
                 // Just start as a normal service. KeepAliveService should protect this.

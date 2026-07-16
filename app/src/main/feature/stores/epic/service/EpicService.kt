@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.IBinder
 import com.winlator.cmod.BuildConfig
-import com.winlator.cmod.R
 import com.winlator.cmod.app.PluviaApp
 import com.winlator.cmod.app.db.download.DownloadRecord
 import com.winlator.cmod.app.service.DownloadService
@@ -17,7 +16,6 @@ import com.winlator.cmod.feature.stores.epic.data.EpicGameToken
 import com.winlator.cmod.feature.stores.epic.ui.util.SnackbarManager
 import com.winlator.cmod.feature.stores.common.StoreInstallPathSafety
 import com.winlator.cmod.feature.stores.steam.data.DownloadInfo
-import com.winlator.cmod.feature.stores.steam.data.LaunchInfo
 import com.winlator.cmod.feature.stores.steam.enums.DownloadPhase
 import com.winlator.cmod.feature.stores.steam.enums.Marker
 import com.winlator.cmod.feature.stores.steam.events.AndroidEvent
@@ -26,7 +24,6 @@ import com.winlator.cmod.feature.stores.steam.utils.MarkerUtils
 import com.winlator.cmod.feature.stores.steam.utils.PrefManager
 import com.winlator.cmod.runtime.system.SessionKeepAliveService
 import com.winlator.cmod.shared.android.AppTerminationHelper
-import com.winlator.cmod.shared.android.NotificationHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import timber.log.Timber
@@ -34,10 +31,6 @@ import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import javax.inject.Inject
-
-import android.content.pm.ServiceInfo
-import android.os.Build
-import com.winlator.cmod.shared.android.NotificationHelper.Companion.ACTION_EXIT
 
 // Service facade for Epic auth, library sync, downloads, and cloud saves.
 @AndroidEntryPoint
@@ -80,7 +73,6 @@ class EpicService : Service() {
         val isRunning: Boolean
             get() = instance != null
 
-        @Volatile private var appInForeground = true
 
         fun start(context: Context) {
             Timber.tag("EPIC").d("Starting service...")

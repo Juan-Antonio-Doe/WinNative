@@ -6,12 +6,10 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Context.NOTIFICATION_SERVICE
 import android.content.Intent
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.winlator.cmod.BuildConfig
 import com.winlator.cmod.R
 import com.winlator.cmod.app.shell.UnifiedActivity
-import com.winlator.cmod.feature.stores.steam.service.SteamService
 import javax.inject.Inject
 
 

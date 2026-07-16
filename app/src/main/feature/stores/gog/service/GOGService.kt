@@ -22,7 +22,6 @@ import com.winlator.cmod.feature.sync.google.GameSaveBackupManager.BackupResult
 import com.winlator.cmod.runtime.container.Container
 import com.winlator.cmod.runtime.system.SessionKeepAliveService
 import com.winlator.cmod.shared.android.AppTerminationHelper
-import com.winlator.cmod.shared.android.NotificationHelper
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.*
 import timber.log.Timber
@@ -33,10 +32,6 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
-
-import android.content.pm.ServiceInfo
-import android.os.Build
-import com.winlator.cmod.shared.android.NotificationHelper.Companion.ACTION_EXIT
 
 // Service facade for GOG auth, library sync, downloads, and cloud saves.
 @AndroidEntryPoint

@@ -280,7 +280,7 @@ dependencies {
     implementation files('libs/MidiSynth/MidiSynth.jar')
     implementation libs.recyclerview
     implementation libs.coreKtx
-    implementation("androidx.lifecycle:lifecycle-process:2.9.0")    // New = compilation errors / gradle plugin update requirement.
+    implementation(libs.lifecycleProcess)    // New = compilation errors / gradle plugin update requirement.
 
 
     implementation 'com.android.ndk.thirdparty:openssl:1.1.1q-beta-1'

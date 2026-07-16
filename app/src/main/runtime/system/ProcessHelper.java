@@ -299,8 +299,6 @@ public abstract class ProcessHelper {
         default:
           break;
       }
-
-//      suspendProcess(pid);
     }
   }
 
@@ -733,7 +731,7 @@ public abstract class ProcessHelper {
   }
 
   public static void setBackgroundPauseMode(BackgroundPauseMode mode) {
-    backgroundPauseMode = mode != null ? mode : BackgroundPauseMode.ALL;
+    backgroundPauseMode = mode != null ? mode : BackgroundPauseMode.GAME_ONLY;
   }
 
   public static BackgroundPauseMode getBackgroundPauseMode() {

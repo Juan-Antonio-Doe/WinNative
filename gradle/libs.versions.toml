@@ -31,7 +31,7 @@ xz = "1.12"
 commonsCompress = "1.28.0"
 spotless = "8.5.1"
 workManager = "2.11.2"
-lifecycleProcess = "2.11.0"
+lifecycleProcess = "2.9.0"  # New = compilation errors / gradle plugin update requirement.
 
 [libraries]
 okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }

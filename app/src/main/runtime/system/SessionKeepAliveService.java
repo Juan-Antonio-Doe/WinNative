@@ -59,10 +59,6 @@ public class SessionKeepAliveService extends Service {
 
     private static final String ACTION_SESSION_START = "com.winlator.cmod.action.SESSION_START";
     private static final String ACTION_SESSION_STOP = "com.winlator.cmod.action.SESSION_STOP";
-    private static final String ACTION_SESSION_PAUSE = "com.winlator.cmod.action.SESSION_PAUSE";
-    private static final String ACTION_SESSION_RESUME = "com.winlator.cmod.action.SESSION_RESUME";
-    private static final String ACTION_DL_START = "com.winlator.cmod.action.SESSION_DL_START";
-    private static final String ACTION_DL_STOP = "com.winlator.cmod.action.SESSION_DL_STOP";
 
     public static final String COMPONENT_STEAM = "Steam";
     public static final String COMPONENT_EPIC = "Epic";
@@ -593,11 +589,6 @@ public class SessionKeepAliveService extends Service {
             heartbeatThread = null;
             LogManager.log(TAG, "Heartbeat stopped", this);
         }
-    }
-
-    private void runOomSweep() {
-        new Thread(this::runOomSweepInternal, "SessionOomProtection").start();
-        LogManager.log(TAG, "OOM protection sweep started", this);
     }
 
     private void runOomSweepInternal() {

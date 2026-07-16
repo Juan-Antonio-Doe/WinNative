@@ -738,7 +738,7 @@ object LogManager {
                     // Separator line with reason number: 0 = newest/last, larger = older
                     appendLine(
                         ctx, EXIT_REASONS_FILE, "I/$TAG",
-                        "\n---- Exit reason #${index} (0=new/last, ${maxExitReasons}=oldest) ----"
+                        "\n---- Exit reason #${index+1} (1=new/last, ${maxExitReasons}=oldest) ----"
                     )
 
                     appendLine(
