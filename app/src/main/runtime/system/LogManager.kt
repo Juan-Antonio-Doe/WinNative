@@ -23,6 +23,10 @@ import java.util.Date
 import java.util.Locale
 import androidx.core.content.edit
 import com.winlator.cmod.BuildConfig
+import androidx.core.net.toUri
+import java.time.LocalDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 object LogManager {
     private const val TAG = "LogManager"
@@ -35,7 +39,7 @@ object LogManager {
     private var appLogProcess: Process? = null
     private var eventWatchProcess: Process? = null
 
-    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+    private val logTimestampFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
 
     enum class Level(val prefix: String) { DEBUG("D"), INFO("I"), WARN("W"), ERROR("E") }
 
@@ -112,6 +116,7 @@ object LogManager {
     @Volatile private var cachedLogsDir: File? = null
 
     @Volatile private var manualTextFilter: String? = null
+    @Volatile private var manualTextFilterPattern: Regex? = null
 
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -232,11 +237,11 @@ object LogManager {
     private fun resolvePathString(uriStr: String?, fallback: String, ctx: Context): String {
         if (uriStr.isNullOrEmpty()) return fallback
         return try {
-            val uri = Uri.parse(uriStr)
-            FileUtils.getFilePathFromUri(ctx, uri) ?: uriStr
+            val uri = uriStr.toUri()
+            FileUtils.getFilePathFromUri(ctx, uri) ?: fallback
         } catch (e: Exception) {
             logW(TAG,e, ctx) { "Failed to resolve winlator_path_uri ($uriStr): ${e.message}" }
-            uriStr
+            fallback
         }
     }
 
@@ -334,7 +339,17 @@ object LogManager {
     /** Transient only — never written to SharedPreferences. Pass null/blank to clear. */
     @JvmStatic
     fun setManualTextFilter(text: String?) {
-        manualTextFilter = text?.trim()?.takeIf { it.isNotEmpty() }
+        val input = text?.trim()?.takeIf { it.isNotEmpty() }
+        manualTextFilter = input
+        manualTextFilterPattern = input?.let {
+            try {
+                // Attempt to compile as a case-insensitive regex
+                Regex(it, RegexOption.IGNORE_CASE)
+            } catch (e: Exception) {
+                // If regex is invalid (e.g. "C++"), treat as a literal by escaping metacharacters
+                Regex(Regex.escape(it), RegexOption.IGNORE_CASE)
+            }
+        }
     }
 
     @JvmStatic
@@ -551,7 +566,7 @@ object LogManager {
 
         if (!cachedAppDebugEnabled) return
         if (!passesTagFilter(tag)) return
-        manualTextFilter?.let { if (!message.contains(it, ignoreCase = true)) return }
+        manualTextFilterPattern?.let { if (!it.containsMatchIn(message)) return }
 
         val ctx = resolveContext(context) ?: return
         val fullMessage = if (t != null) "$message :: ${Log.getStackTraceString(t)}" else message
@@ -560,7 +575,8 @@ object LogManager {
 
     private fun appendLine(context: Context, fileName: String, level: String, message: String) {
         try {
-            File(getLogsDir(context), fileName).appendText("${timestampFormat.format(Date())} $level: $message\n")
+            val now = LocalDateTime.now().format(logTimestampFormatter)
+            File(getLogsDir(context), fileName).appendText("$now $level: $message\n")
         } catch (e: Exception) {
             // Need to be Log for when baseLog and Timber doesn't work.
             Log.e(TAG, "Failed to append to $fileName: ${e.message}", e)
@@ -592,18 +608,26 @@ object LogManager {
             try {
                 // Wipe the historical buffer so this file only contains lines from
                 // this pause window onward — not hours of unrelated backlog.
-                Runtime.getRuntime().exec(arrayOf("logcat", "-c")).waitFor()
+                runBlockingLogcatCommand(arrayOf("logcat", "-c"))
 
                 val safeLabel = label.ifBlank { "manual" }.replace(Regex("[^A-Za-z0-9_-]"), "_")
-                val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US).format(Date())
+                val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss", Locale.US))
                 val file = File(getLogsDir(context), "event_${safeLabel}_$stamp.log")
                 appendLine(context, file.name, "I/$TAG", "=== event watch started ($safeLabel) ===")
 
                 val command = mutableListOf("logcat", "-v", "threadtime", "-f", file.absolutePath)
                 command.addAll(buildLogcatFilterSpecArgs())
-                manualTextFilter?.let {
+                manualTextFilter?.let { filter ->
                     command.add("-e")
-                    command.add(it)
+                    val safeFilter = try {
+                        java.util.regex.Pattern.compile(filter)
+                        filter
+                    } catch (e: Exception) {
+                        // Portable escape for logcat's regex engine (RE2/libc)
+                        filter.replace(Regex("[\\\\.^$\\[\\]*+?{}()|]"), "\\\\$0")
+                    }
+                    command.add(safeFilter)
+                    command.add("-i") // Ensures logcat match is case-insensitive like baseLog
                 }
 
                 eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
@@ -708,6 +732,7 @@ object LogManager {
                 val key = exitKey(info)
                 val exitKey = "exit_$key"
                 val crashKey = "crash_$key"
+                val timestamp = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(info.timestamp), ZoneId.systemDefault()).format(logTimestampFormatter)
 
                 if (cachedExitReasonLogEnabled && exitKey !in loggedKeys) {
                     // Separator line with reason number: 0 = newest/last, larger = older
@@ -719,7 +744,7 @@ object LogManager {
                     appendLine(
                         ctx, EXIT_REASONS_FILE, "I/$TAG",
                         "pid=${info.pid} reason=${info.reason}-[${getExitReasonName(info.reason)}] status=${info.status} " +
-                                "importance=${info.importance} desc=${info.description} timestamp=${Date(info.timestamp)}",
+                                "importance=${info.importance} desc=${info.description} timestamp=${timestamp}",
                     )
                     loggedKeys.add(exitKey)
                     wroteSomething = true
@@ -747,7 +772,7 @@ object LogManager {
                                 appendLine(
                                     ctx, CRASH_FILE, "I/$TAG",
                                     "\n=== Historical $type Detected ===\n" +
-                                            "PID: ${info.pid} | Timestamp: ${Date(info.timestamp)}\n" +
+                                            "PID: ${info.pid} | Timestamp: ${timestamp}\n" +
                                             "Description: ${info.description}\n" +
                                             "Trace Summary:\n$summary\n" +
                                             "=== End $type Report ==="
@@ -791,7 +816,7 @@ object LogManager {
     @JvmStatic
     fun logCrash(context: Context, thread: Thread, throwable: Throwable) {
         try {
-            val timestamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US).format(Date())
+            val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss_SSS", Locale.US))
             val fileName = "crashFromThread_$timestamp.log"
             val file = File(getLogsDir(context), fileName)
 
@@ -856,9 +881,11 @@ object LogManager {
 
     @RequiresApi(Build.VERSION_CODES.R)
     private fun buildPostMortemReport(info: ApplicationExitInfo, context: Context): String {
+        val timestamp = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(info.timestamp), ZoneId.systemDefault()).format(logTimestampFormatter)
+
         return buildString {
             appendLine("=== POST-MORTEM [${getExitReasonName(info.reason)}] ===")
-            appendLine("Time     : ${Date(info.timestamp)}")
+            appendLine("Time     : $timestamp")
             appendLine("PID      : ${info.pid}")
             appendLine("Reason   : ${info.reason} [${getExitReasonName(info.reason)}]")
             appendLine("Status   : ${info.status}")
@@ -889,7 +916,10 @@ object LogManager {
 
     // A unique, stable key for one ApplicationExitInfo record.
     @RequiresApi(Build.VERSION_CODES.R)
-    private fun exitKey(info: ApplicationExitInfo): String = "${info.pid}_${info.timestamp}"
+    private fun exitKey(info: ApplicationExitInfo): String {
+        val timestamp = LocalDateTime.ofInstant(java.time.Instant.ofEpochMilli(info.timestamp), ZoneId.systemDefault()).format(logTimestampFormatter)
+        return "${info.pid}_$timestamp"
+    }
 
     private fun getPersistedKeys(prefs: SharedPreferences, prefKey: String): Set<String> =
         prefs.getString(prefKey, null)

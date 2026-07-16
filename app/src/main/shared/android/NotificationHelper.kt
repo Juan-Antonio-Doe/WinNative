@@ -30,15 +30,6 @@ class NotificationHelper
             private const val CHAT_CHANNEL_ID = "winnative_steam_chat"
             private const val CHAT_CHANNEL_NAME = "Steam Chat"
 
-            /** At the time of writing this, this channel only shows a single notification.
-             * No code has been found indicating that friend chat notifications change channel
-             * when going to the background; the only change is that the old SteamService foreground
-             * is replaced by this channel’s foreground when the app goes into the background
-             * (which may cause an exception). For this reason, it's commented out. Can be deleted.
-             */
-            /*private const val CHAT_BG_CHANNEL_ID = "winnative_steam_chat_background"
-            private const val CHAT_BG_CHANNEL_NAME = "Steam Chat Background"*/
-
             const val EXTRA_OPEN_CHAT_FRIEND_ID = BuildConfig.APPLICATION_ID + ".OPEN_CHAT_FRIEND_ID"
 
             const val ACTION_EXIT = BuildConfig.APPLICATION_ID + ".EXIT"
@@ -60,21 +51,6 @@ class NotificationHelper
                 "Incoming Steam friend messages",
                 true
             )
-
-            // Reason why it has been commented explained in the companion variables.
-            /*val backgroundChannel =
-                NotificationChannel(
-                    CHAT_BG_CHANNEL_ID,
-                    CHAT_BG_CHANNEL_NAME,
-                    NotificationManager.IMPORTANCE_DEFAULT,
-                ).apply {
-                    description = "Shown while Steam chat keeps running after you exit"
-                    setShowBadge(false)
-                    setSound(null, null)
-                    enableVibration(false)
-                }
-
-            notificationManager.createNotificationChannel(backgroundChannel)*/
         }
 
     // Sends or updates a notification.

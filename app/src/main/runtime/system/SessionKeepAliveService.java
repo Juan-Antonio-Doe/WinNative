@@ -54,7 +54,6 @@ public class SessionKeepAliveService extends Service {
 
     private static volatile SessionKeepAliveService instance;
     private static final String TAG = "SessionKeepAlive";
-    private static final String EXTRA_TAG = "SessionKeepAlive_debugTag";
     private static final String ACTION_ENSURE_FOREGROUND =
             "com.winlator.cmod.action.ENSURE_FOREGROUND";
 
