@@ -361,6 +361,7 @@ fun DebugScreen(
                 exit = fadeOut() + shrinkVertically(),
             ) {
                 var manualFilterText by remember { mutableStateOf(LogManager.getManualTextFilter()) }
+                LaunchedEffect(state.appDebug, state.eventWatchLog) { manualFilterText = LogManager.getManualTextFilter() }
                 val focusManager = LocalFocusManager.current
                 OutlinedTextField(
                     value = manualFilterText,
@@ -1022,7 +1023,7 @@ private fun MultiSelectDialog(
     maxWidth: Dp = 460.dp,
 ) {
     val selected =
-        remember(initiallySelected) {
+        remember {
             mutableStateOf(initiallySelected.toSet())
         }
     val contentRegistry = remember { PaneNavRegistry().apply { stableCursor = true } }
@@ -1033,6 +1034,10 @@ private fun MultiSelectDialog(
     val density = LocalDensity.current
     var viewportTop by remember { mutableStateOf(0f) }
     var viewportHeight by remember { mutableIntStateOf(0) }
+    // Capture latest options and callbacks to avoid stale data in remembered handlers
+    val currentOptions by rememberUpdatedState(options)
+    val currentOnConfirm by rememberUpdatedState(onConfirm)
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
 
     LaunchedEffect(contentRegistry.activeRow, contentRegistry.activeCol, viewportHeight, footerZone) {
         if (footerZone || !contentRegistry.controllerActive || contentRegistry.manualSelection) return@LaunchedEffect
@@ -1073,10 +1078,10 @@ private fun MultiSelectDialog(
     val handlers =
         remember {
             paneNavHandlers(
-                onDismiss = onDismiss,
+                onDismiss = { currentOnDismiss() },
                 onStart = {
-                    val ordered = options.filter { it in selected.value }
-                    onConfirm(ordered)
+                    val ordered = currentOptions.filter { it in selected.value }
+                    currentOnConfirm(ordered)
                 },
                 registry = { if (footerZone) footerRegistry else contentRegistry },
             )

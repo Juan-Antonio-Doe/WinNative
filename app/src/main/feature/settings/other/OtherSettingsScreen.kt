@@ -1254,15 +1254,22 @@ private fun HeartbeatFrequencyCard(
     var rawText by remember(currentFrequency) { mutableStateOf(currentFrequency.toString()) }
     val focusManager = LocalFocusManager.current
 
+    // Tracks internal focus to prevent redundant commit on initial composition/attach
+    var isFocused by remember { mutableStateOf(false) }
+
     // Derive the effective value and whether the current input is in error,
     // so we can give the user immediate feedback without committing bad state.
-    val parsed = rawText.trim().toIntOrNull()
-    val isError = parsed == null || (parsed != 0 && parsed < 5)
+    // Use Long to handle Int overflow detection correctly
+    val parsedLong = rawText.trim().toLongOrNull()
+    val isOverflow = rawText.isNotEmpty() && (parsedLong == null || parsedLong > Int.MAX_VALUE)
+    val isTooSmall = parsedLong != null && parsedLong != 0L && parsedLong < 5
+    val isError = isOverflow || isTooSmall
+
     val effectiveLabel = when {
-        parsed == null  -> stringResource(R.string.settings_other_bg_heartbeat_disabled)
-        parsed == 0     -> stringResource(R.string.settings_other_bg_heartbeat_disabled)
-        parsed < 5      -> stringResource(R.string.settings_other_bg_heartbeat_minimum)
-        else            -> stringResource(R.string.settings_other_bg_heartbeat_effective, parsed)
+        rawText.isEmpty() || parsedLong == 0L -> stringResource(R.string.settings_other_bg_heartbeat_disabled)
+        isOverflow -> stringResource(R.string.settings_other_bg_heartbeat_effective, Int.MAX_VALUE)
+        isTooSmall -> stringResource(R.string.settings_other_bg_heartbeat_minimum)
+        else -> stringResource(R.string.settings_other_bg_heartbeat_effective, parsedLong!!.toInt())
     }
 
     Box(
@@ -1352,7 +1359,6 @@ private fun HeartbeatFrequencyCard(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 focusManager.clearFocus()
-                                commitFrequency(parsed, onFrequencyChanged)
                             },
                         ),
                         modifier = Modifier
@@ -1374,9 +1380,10 @@ private fun HeartbeatFrequencyCard(
                             .onFocusChanged { focus ->
                                 // Commit and clamp when the user leaves the field,
                                 // so tapping elsewhere still saves the value.
-                                if (!focus.isFocused) {
-                                    commitFrequency(parsed, onFrequencyChanged)
+                                if (isFocused && !focus.isFocused) {
+                                    commitFrequency(rawText, currentFrequency, onFrequencyChanged)
                                 }
+                                isFocused = focus.isFocused
                             },
                         suffix = { Text("s", color = TextSecondary, fontSize = 13.sp) },
                         supportingText = effectiveLabel.let { label ->
@@ -1396,11 +1403,22 @@ private fun HeartbeatFrequencyCard(
 }
 
 // Extracted so both Done-action and focus-loss share identical clamping logic.
-private fun commitFrequency(parsed: Int?, onFrequencyChanged: (Int) -> Unit) {
-    val committed = when {
-        parsed == null || parsed == 0  -> 0     // revert to default on empty / non-numeric -> disabled
-        parsed < 5      -> 5     // clamp to minimum
-        else            -> parsed
+private fun commitFrequency(raw: String, current: Int, onFrequencyChanged: (Int) -> Unit) {
+    val trimmed = raw.trim()
+    if (trimmed.isEmpty()) {
+        if (current != 0) onFrequencyChanged(0)
+        return
     }
-    onFrequencyChanged(committed)
+
+    val parsedLong = trimmed.toLongOrNull()
+    val committed = when {
+        parsedLong == null || parsedLong > Int.MAX_VALUE -> Int.MAX_VALUE // Overflow -> clamp to Int.MAX
+        parsedLong == 0L -> 0   // revert to default on empty / non-numeric -> disabled
+        parsedLong < 5 -> 5     // clamp to minimum
+        else -> parsedLong.toInt()
+    }
+
+    if (committed != current) {
+        onFrequencyChanged(committed)
+    }
 }

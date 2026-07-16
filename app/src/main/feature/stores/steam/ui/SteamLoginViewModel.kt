@@ -287,6 +287,8 @@ class SteamLoginViewModel : ViewModel() {
                     SessionKeepAliveService.startComponent(context, SessionKeepAliveService.COMPONENT_STEAM, "Restarting SteamService in retryConnection")
                 } catch (e: Exception) {
                     Timber.e(e, "Failed to restart SteamService in retryConnection")
+                    // Safety: unregister if the service failed to even attempt starting
+                    SessionKeepAliveService.stopComponent(context, SessionKeepAliveService.COMPONENT_STEAM)
                 }
             }, 1000)
         } catch (e: Exception) {

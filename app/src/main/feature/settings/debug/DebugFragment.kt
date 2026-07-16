@@ -87,6 +87,9 @@ class DebugFragment : Fragment() {
                                         .updateLoggingState(ctx)
                                     com.winlator.cmod.runtime.system.LogManager
                                         .clearManualTextFilter()
+                                    if (!debugState.eventWatchLog) {
+                                        com.winlator.cmod.runtime.system.LogManager.clearManualTextFilter()
+                                    }
                                 }
                                 refresh()
                             },
@@ -119,7 +122,7 @@ class DebugFragment : Fragment() {
                             onAddCustomTag = { tag -> LogManager.addCustomTag(requireContext(), tag); refresh() },
                             onRemoveCustomTag = { tag -> LogManager.removeCustomTag(requireContext(), tag); refresh() },
                             onManualTextFilterChanged = { text -> LogManager.setManualTextFilter(text) }, // no persistence, no refreshState needed
-                            allLogTagOptions = remember { LogManager.getAllKnownTags() },
+                            allLogTagOptions = remember(debugState.customTags) { LogManager.getAllKnownTags() },
                             onWineDebugChanged = { checked ->
                                 preferences.edit { putBoolean("enable_wine_debug", checked) }
                                 com.winlator.cmod.runtime.system.LogManager

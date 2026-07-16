@@ -7677,6 +7677,8 @@ class SteamService : Service() {
         // Register Steam component in the master foreground service
         if (isRunning && !isStopping) {
             SessionKeepAliveService.startComponent(this, SessionKeepAliveService.COMPONENT_STEAM, "Connected")
+            // Bridge: Clear any registration from SteamLoginViewModel.retryConnection which uses application context
+            SessionKeepAliveService.stopComponent(applicationContext, SessionKeepAliveService.COMPONENT_STEAM)
         }
 
         return START_STICKY
@@ -8090,12 +8092,8 @@ class SteamService : Service() {
         suspendedForBionic = false
         appInForeground = true
 
-        runCatching {
-            PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
-        }
-        runCatching {
-            PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
-        }
+        PluviaApp.events.off<AndroidEvent.EndProcess, Unit>(onEndProcess)
+        PluviaApp.events.clearAllListenersOf<SteamEvent<Any>>()
     }
 
     // region [REGION] WN-Steam-Client lifecycle
@@ -9109,6 +9107,11 @@ class SteamService : Service() {
     }
 
     override fun onTimeout(startId: Int, fstype: Int) {
+        /*
+         * Note: This callback is unreachable at targetSdk 28 (requires API 34+).
+         * It is implemented for forward compatibility to ensure that if the system
+         * enforces a timeout, we stop the service gracefully (which triggers full cleanup).
+         */
         super.onTimeout(startId, fstype)
         Timber.w("SteamService reached 6-hour limit for dataSync foreground service. Stopping gracefully.")
 

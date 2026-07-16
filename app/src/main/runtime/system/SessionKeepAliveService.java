@@ -105,7 +105,7 @@ public class SessionKeepAliveService extends Service {
     private static final String NOTIFICATION_ID_NAME = "winnative.keepAlive";
 
     // Tracks active components and their notification messages
-    private static final Map<String, String> activeComponents = new ConcurrentHashMap<>();
+    private static final Map<String, Map<Object, String>> activeComponents = new ConcurrentHashMap<>();
 
     // ===================================================================
     // Container / game session lifecycle
@@ -219,16 +219,24 @@ public class SessionKeepAliveService extends Service {
 
     public static void startComponent(Context ctx, String componentName, String message) {
         if (ctx == null || componentName == null) return;
-        activeComponents.put(componentName, message != null ? message : "");
+        Map<Object, String> owners = activeComponents.computeIfAbsent(componentName, k -> new ConcurrentHashMap<>());
+        owners.put(ctx, message != null ? message : "");
         LogManager.log(TAG, "startComponent: " + componentName, ctx);
         updateForegroundState(ctx);
     }
 
     public static void stopComponent(Context ctx, String componentName) {
         if (ctx == null || componentName == null) return;
-        if (activeComponents.remove(componentName) == null) return;
-        LogManager.log(TAG, "stopComponent: " + componentName, ctx);
-        updateForegroundState(ctx);
+        Map<Object, String> owners = activeComponents.get(componentName);
+        if (owners != null) {
+            if (owners.remove(ctx) != null) {
+                if (owners.isEmpty()) {
+                    activeComponents.remove(componentName);
+                }
+                LogManager.log(TAG, "stopComponent: " + componentName + " (owner: " + ctx + ")", ctx);
+                updateForegroundState(ctx);
+            }
+        }
     }
 
     public static boolean isAppInBackground()  { return isAppInBackground;  }
@@ -467,12 +475,17 @@ public class SessionKeepAliveService extends Service {
 
     @Override
     public void onTimeout(int startId, int fstype) {
+        /*
+         * Note: This callback is unreachable while targetSdk is 28 (requires API 34+).
+         * If the SDK is bumped in the future, we must route through stopSession to ensure
+         * that environment components are torn down and wine processes are not leaked,
+         * rather than just stopping the service while they are in a protected/frozen state.
+         */
         super.onTimeout(startId, fstype);
         Timber.tag(TAG).w("Service reached 6-hour limit for dataSync. Stopping gracefully.");
 
         // Stop the service and cleanup
-        sessionActive.set(false);
-        isContainerPaused = false;
+        stopSession(this);
         stopForegroundCompat();
         stopSelf();
     }
