@@ -816,6 +816,8 @@
     <string name="settings_debug_no_logs_available">没有可用的调试日志。请先启用调试选项并启动游戏。</string>
     <string name="settings_debug_capture_failed">无法捕获日志：%1$s</string>
     <string name="settings_debug_log_to_file_desc">将 WinNative 进程错误、警告和崩溃记录到文件</string>
+    <string name="settings_filtered_logs_to_file_title">已筛选调试日志</string>
+    <string name="settings_filtered_logs_to_file_desc">将应用的日志保存到文件中，按标签过滤器的配置进行过滤。</string>
     <string name="settings_debug_section_emulation">模拟</string>
     <string name="settings_debug_section_subsystems">子系统</string>
     <string name="settings_debug_section_tools">工具</string>

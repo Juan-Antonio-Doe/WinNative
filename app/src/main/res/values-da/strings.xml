@@ -816,6 +816,8 @@ F.eks. <b>META</b> for <i>META-tast</i>, \n
     <string name="settings_debug_no_logs_available">Ingen fejlfindingslogfiler tilgængelige. Aktiver fejlfindingsindstillinger først og start et spil.</string>
     <string name="settings_debug_capture_failed">Kunne ikke indfange logfiler: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Log WinNative-procesfejl, advarsler og nedbrud til fil</string>
+    <string name="settings_filtered_logs_to_file_title">Filtreret fejlfindingslog</string>
+    <string name="settings_filtered_logs_to_file_desc">Gem appens logfiler i en fil, filtreret i henhold til det, der er konfigureret i tag-filteret.</string>
     <string name="settings_debug_section_emulation">Emulering</string>
     <string name="settings_debug_section_subsystems">Undersystemer</string>
     <string name="settings_debug_section_tools">Værktøjer</string>

@@ -822,6 +822,8 @@
     <string name="settings_debug_no_logs_available">Немає доступних журналів налагодження. Спочатку увімкніть параметри налагодження та запустіть гру.</string>
     <string name="settings_debug_capture_failed">Не вдалося захопити журнали: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Записувати помилки, попередження та збої процесу WinNative у файл</string>
+    <string name="settings_filtered_logs_to_file_title">Відфільтрований журнал налагодження</string>
+    <string name="settings_filtered_logs_to_file_desc">Зберегти журнали застосунка у файл, відфільтровані згідно налаштувань фільтра тегів.</string>
     <string name="settings_debug_section_emulation">Емуляція</string>
     <string name="settings_debug_section_subsystems">Підсистеми</string>
     <string name="settings_debug_section_tools">Інструменти</string>

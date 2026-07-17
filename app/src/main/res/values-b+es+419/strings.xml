@@ -1101,6 +1101,8 @@ Por ejemplo, <b>META</b> para la <i>tecla META</i>, \n
     <string name="settings_debug_no_logs_available">No hay registros de depuración disponibles. Primero habilita las opciones de depuración e inicia un juego.</string>
     <string name="settings_debug_capture_failed">Error al capturar los registros: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Registra en un archivo los errores, advertencias y fallos del proceso de WinNative</string>
+    <string name="settings_filtered_logs_to_file_title">Registro de depuración filtrado</string>
+    <string name="settings_filtered_logs_to_file_desc">Guarda los registros de la aplicación en un archivo, filtrados según lo configurado en el filtro de etiquetas.</string>
     <string name="settings_debug_section_emulation">Emulación</string>
     <string name="settings_debug_section_subsystems">Subsistemas</string>
     <string name="settings_debug_section_tools">Herramientas</string>

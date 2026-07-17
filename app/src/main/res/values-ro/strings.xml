@@ -816,6 +816,8 @@ De ex. <b>META</b> pentru <i>tasta META</i>, \n
     <string name="settings_debug_no_logs_available">Nu sunt disponibile jurnale de depanare. Activează mai întâi opțiunile de depanare și lansează un joc.</string>
     <string name="settings_debug_capture_failed">Capturarea jurnalelor a eșuat: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Înregistrează erorile, avertismentele și blocările procesului WinNative în fișier</string>
+    <string name="settings_filtered_logs_to_file_title">Jurnal de depanare filtrat</string>
+    <string name="settings_filtered_logs_to_file_desc">Salvaţi jurnalele aplicaţiei într-un fişier, filtrate conform configurării din filtrul de etichete.</string>
     <string name="settings_debug_section_emulation">Emulare</string>
     <string name="settings_debug_section_subsystems">Subsisteme</string>
     <string name="settings_debug_section_tools">Instrumente</string>

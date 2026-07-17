@@ -816,6 +816,8 @@ Par ex. <b>META</b> pour la <i>touche META</i>, \n
     <string name="settings_debug_no_logs_available">Aucun journal de débogage disponible. Activez d\'abord les options de débogage puis lancez un jeu.</string>
     <string name="settings_debug_capture_failed">Échec de la capture des journaux : %1$s</string>
     <string name="settings_debug_log_to_file_desc">Journaliser les erreurs, avertissements et plantages du processus WinNative dans un fichier</string>
+    <string name="settings_filtered_logs_to_file_title">Journal de débogage filtré</string>
+    <string name="settings_filtered_logs_to_file_desc">Enregistrez les journaux de l\'application dans un fichier, filtrés selon la configuration du filtre de balises.</string>
     <string name="settings_debug_section_emulation">Émulation</string>
     <string name="settings_debug_section_subsystems">Sous-systèmes</string>
     <string name="settings_debug_section_tools">Outils</string>

@@ -1101,6 +1101,8 @@ E.g. <b>META</b> için <i>META tuşu</i>, \n
     <string name="settings_debug_no_logs_available">Kullanılabilir hata ayıklama günlüğü yok. Önce hata ayıklama seçeneklerini etkinleştirin ve bir oyun başlatın.</string>
     <string name="settings_debug_capture_failed">Günlükler yakalanamadı: %1$s</string>
     <string name="settings_debug_log_to_file_desc">WinNative işlem hatalarını, uyarılarını ve çökmelerini dosyaya kaydet</string>
+    <string name="settings_filtered_logs_to_file_title">Filtrelenmiş Hata Ayıklama Günlüğü</string>
+    <string name="settings_filtered_logs_to_file_desc">Uygulamanın günlüklerini, etiket filtresinde ayarlananlara göre filtreleyerek bir dosyaya kaydet.</string>
     <string name="settings_debug_section_emulation">Öykünme</string>
     <string name="settings_debug_section_subsystems">Alt Sistemler</string>
     <string name="settings_debug_section_tools">Araçlar</string>

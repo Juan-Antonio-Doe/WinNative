@@ -816,6 +816,8 @@
     <string name="settings_debug_no_logs_available">沒有可用的除錯日誌。請先啟用除錯選項並啟動遊戲。</string>
     <string name="settings_debug_capture_failed">無法擷取日誌：%1$s</string>
     <string name="settings_debug_log_to_file_desc">將 WinNative 程序錯誤、警告與當機記錄到檔案</string>
+    <string name="settings_filtered_logs_to_file_title">已篩選的除錯日誌</string>
+    <string name="settings_filtered_logs_to_file_desc">將應用程式的日誌儲存至檔案，並依標籤過濾器的設定進行篩選。</string>
     <string name="settings_debug_section_emulation">模擬</string>
     <string name="settings_debug_section_subsystems">子系統</string>
     <string name="settings_debug_section_tools">工具</string>

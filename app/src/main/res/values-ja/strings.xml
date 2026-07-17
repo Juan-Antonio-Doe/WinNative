@@ -1101,6 +1101,8 @@
     <string name="settings_debug_no_logs_available">利用可能なデバッグログがありません。先にデバッグオプションを有効にしてゲームを起動してください。</string>
     <string name="settings_debug_capture_failed">ログの取得に失敗しました: %1$s</string>
     <string name="settings_debug_log_to_file_desc">WinNative プロセスのエラー、警告、クラッシュをファイルに記録します</string>
+    <string name="settings_filtered_logs_to_file_title">フィルタされたデバッグログ</string>
+    <string name="settings_filtered_logs_to_file_desc">タグフィルタで設定された内容に従って、アプリのログをフィルタリングし、ファイルに保存します。</string>
     <string name="settings_debug_section_emulation">エミュレーション</string>
     <string name="settings_debug_section_subsystems">サブシステム</string>
     <string name="settings_debug_section_tools">ツール</string>

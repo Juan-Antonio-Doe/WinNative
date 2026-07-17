@@ -923,6 +923,8 @@
     <string name="settings_debug_no_logs_available">कोई डिबग लॉग उपलब्ध नहीं है. पहले डिबगिंग विकल्प सक्षम करें और एक गेम लॉन्च करें।</string>
     <string name="settings_debug_capture_failed">लॉग कैप्चर करने में विफल: %1$s</string>
     <string name="settings_debug_log_to_file_desc">फ़ाइल में WinNative प्रक्रिया त्रुटियाँ, चेतावनियाँ और क्रैश लॉग करें</string>
+    <string name="settings_filtered_logs_to_file_title">फ़िल्टर किया गया डिबग लॉग</string>
+    <string name="settings_filtered_logs_to_file_desc">ऐप के लॉग को एक फ़ाइल में सहेजें, टैग फ़िल्टर में कॉन्फ़िगर की गई सेटिंग के अनुसार फ़िल्टर किया गया।</string>
     <string name="settings_debug_section_emulation">एमुलेशन</string>
     <string name="settings_debug_section_subsystems">सब-सिस्टम</string>
     <string name="settings_debug_section_tools">टूल</string>

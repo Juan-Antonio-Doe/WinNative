@@ -816,6 +816,8 @@
     <string name="settings_debug_no_logs_available">사용 가능한 디버그 로그가 없습니다. 먼저 디버그 옵션을 활성화하고 게임을 실행하세요.</string>
     <string name="settings_debug_capture_failed">로그 캡처 실패: %1$s</string>
     <string name="settings_debug_log_to_file_desc">WinNative 프로세스 오류, 경고 및 충돌을 파일에 기록</string>
+    <string name="settings_filtered_logs_to_file_title">필터링된 디버그 로그</string>
+    <string name="settings_filtered_logs_to_file_desc">앱의 로그를 파일에 저장합니다. 태그 필터에 설정된 대로 필터링됩니다.</string>
     <string name="settings_debug_section_emulation">에뮬레이션</string>
     <string name="settings_debug_section_subsystems">하위 시스템</string>
     <string name="settings_debug_section_tools">도구</string>

@@ -884,6 +884,8 @@
     <string name="settings_debug_no_logs_available">Журналы отладки отсутствуют. Сначала включите параметры отладки и запустите игру.</string>
     <string name="settings_debug_capture_failed">Не удалось записать журналы: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Записывать ошибки процесса WinNative, предупреждения и сбои в файл.</string>
+    <string name="settings_filtered_logs_to_file_title">Отфильтрованный журнал отладки</string>
+    <string name="settings_filtered_logs_to_file_desc">Сохранить журналы приложения в файл, отфильтрованные согласно настройкам фильтра тегов.</string>
     <string name="settings_debug_section_emulation">Эмуляция</string>
     <string name="settings_debug_section_subsystems">Подсистемы</string>
     <string name="settings_debug_section_tools">Инструменты</string>

@@ -1101,6 +1101,8 @@ F.eks. <b>META</b> for <i>META-tast</i>, \n
     <string name="settings_debug_no_logs_available">Ingen feilsøkingslogger tilgjengelig. Aktiver feilsøkingsalternativer først og start et spill.</string>
     <string name="settings_debug_capture_failed">Kunne ikke fange logger: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Logg WinNative-prosessfeil, advarsler og krasj til fil</string>
+    <string name="settings_filtered_logs_to_file_title">Filtrert feilsøkingslogg</string>
+    <string name="settings_filtered_logs_to_file_desc">Lagre appens logger til en fil, filtrert i henhold til hva som er konfigurert i merkelappfilteret.</string>
     <string name="settings_debug_section_emulation">Emulering</string>
     <string name="settings_debug_section_subsystems">Delsystemer</string>
     <string name="settings_debug_section_tools">Verktøy</string>

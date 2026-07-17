@@ -1101,6 +1101,8 @@ T.ex. <b>META</b> för <i>META-tangent</i>, \n
     <string name="settings_debug_no_logs_available">Inga felsökningsloggar tillgängliga. Aktivera felsökningsalternativ först och starta ett spel.</string>
     <string name="settings_debug_capture_failed">Det gick inte att fånga loggar: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Logga WinNative-processfel, varningar och krascher till fil</string>
+    <string name="settings_filtered_logs_to_file_title">Filtrerad felsökningslogg</string>
+    <string name="settings_filtered_logs_to_file_desc">Spara appens loggar till en fil, filtrerade enligt vad som är konfigurerat i taggfiltren.</string>
     <string name="settings_debug_section_emulation">Emulering</string>
     <string name="settings_debug_section_subsystems">Delsystem</string>
     <string name="settings_debug_section_tools">Verktyg</string>

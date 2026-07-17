@@ -1101,6 +1101,8 @@ E.g. <b>META</b> for <i>META-näppäin</i>, \n
     <string name="settings_debug_no_logs_available">Virheenkorjauslokeja ei ole saatavilla. Ota ensin virheenkorjausasetukset käyttöön ja käynnistä peli.</string>
     <string name="settings_debug_capture_failed">Lokien kaappaus epäonnistui: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Kirjaa WinNative-prosessin virheet, varoitukset ja kaatumiset tiedostoon</string>
+    <string name="settings_filtered_logs_to_file_title">Suodatettu vianmääritysloki</string>
+    <string name="settings_filtered_logs_to_file_desc">Tallenna sovelluksen lokit tiedostoon, suodatettuna tunnistesuodattimen määritysten mukaisesti.</string>
     <string name="settings_debug_section_emulation">Emulointi</string>
     <string name="settings_debug_section_subsystems">Alijärjestelmät</string>
     <string name="settings_debug_section_tools">Työkalut</string>

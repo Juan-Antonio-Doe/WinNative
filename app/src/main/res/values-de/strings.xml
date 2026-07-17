@@ -816,6 +816,8 @@ Z. B. <b>META</b> für <i>Meta-Taste</i>, \n
     <string name="settings_debug_no_logs_available">Keine Debug-Protokolle verfügbar. Bitte zuerst Debug-Optionen aktivieren und ein Spiel starten.</string>
     <string name="settings_debug_capture_failed">Protokolle konnten nicht erfasst werden: %1$s</string>
     <string name="settings_debug_log_to_file_desc">WinNative-Prozessfehler, -Warnungen und -Abstürze in Datei protokollieren</string>
+    <string name="settings_filtered_logs_to_file_title">Gefiltertes Debug-Protokoll</string>
+    <string name="settings_filtered_logs_to_file_desc">Speichert die Protokolle der App in einer Datei, gefiltert nach den Einstellungen im Tag-Filter.</string>
     <string name="settings_debug_section_emulation">Emulation</string>
     <string name="settings_debug_section_subsystems">Subsysteme</string>
     <string name="settings_debug_section_tools">Werkzeuge</string>

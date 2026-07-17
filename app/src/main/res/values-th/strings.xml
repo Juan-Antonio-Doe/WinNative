@@ -1101,6 +1101,8 @@
     <string name="settings_debug_no_logs_available">ไม่มีบันทึกดีบัก เปิดใช้ตัวเลือกการดีบักก่อนแล้วเปิดเกม</string>
     <string name="settings_debug_capture_failed">ไม่สามารถบันทึกได้: %1$s</string>
     <string name="settings_debug_log_to_file_desc">บันทึกข้อผิดพลาด คำเตือน และการขัดข้องของกระบวนการ WinNative ลงไฟล์</string>
+    <string name="settings_filtered_logs_to_file_title">บันทึกดีบั๊กที่กรองแล้ว</string>
+    <string name="settings_filtered_logs_to_file_desc">บันทึกบันทึกของแอปลงในไฟล์ โดยกรองตามการตั้งค่าในตัวกรองแท็ก</string>
     <string name="settings_debug_section_emulation">การจำลอง</string>
     <string name="settings_debug_section_subsystems">ระบบย่อย</string>
     <string name="settings_debug_section_tools">เครื่องมือ</string>
