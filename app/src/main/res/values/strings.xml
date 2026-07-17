@@ -1117,6 +1117,8 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <string name="settings_debug_no_logs_available">No debug logs available. Enable debugging options first and launch a game.</string>
     <string name="settings_debug_capture_failed">Failed to capture logs: %1$s</string>
     <string name="settings_debug_log_to_file_desc">Log WinNative process errors, warnings and crashes to file</string>
+    <string name="settings_filtered_logs_to_file_title">Filtered Debug Log</string>
+    <string name="settings_filtered_logs_to_file_desc">Save the app’s logs to a file, filtered according to what is configured in the tag filter.</string>
     <string name="settings_debug_section_emulation">Emulation</string>
     <string name="settings_debug_section_subsystems">Subsystems</string>
     <string name="settings_debug_section_tools">Tools</string>

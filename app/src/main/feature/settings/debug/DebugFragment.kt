@@ -85,6 +85,12 @@ class DebugFragment : Fragment() {
                                         .stopAppLogging()
                                     com.winlator.cmod.runtime.system.LogManager
                                         .updateLoggingState(ctx)
+                                }
+                                refresh()
+                            },
+                            onFilteredLogsChanged = { checked ->
+                                preferences.edit { putBoolean("enable_filtered_logs", checked) }
+                                if (!checked) {
                                     com.winlator.cmod.runtime.system.LogManager
                                         .clearManualTextFilter()
                                     if (!debugState.eventWatchLog) {
@@ -244,6 +250,7 @@ class DebugFragment : Fragment() {
         debugState =
             DebugState(
                 appDebug = preferences.getBoolean("enable_app_debug", false),
+                filteredLogs = preferences.getBoolean("enable_filtered_logs", false),
                 exitReasonLog = preferences.getBoolean("enable_exit_reason_log", false),
                 crashLog = preferences.getBoolean("enable_crash_log", false),
                 eventWatchLog = preferences.getBoolean("enable_event_watch_log", false),

@@ -164,6 +164,7 @@ private val SystemTagColor = Color(0xFFFFCC00)
 // State
 data class DebugState(
     val appDebug: Boolean = false,
+    val filteredLogs: Boolean = false,
     val exitReasonLog: Boolean = false,
     val crashLog: Boolean = false,
     val eventWatchLog: Boolean = false,
@@ -200,6 +201,7 @@ fun DebugScreen(
     wineClassOptions: List<String>,
     allLogTagOptions: List<String>,           // LogManager.getAllKnownTags()
     onAppDebugChanged: (Boolean) -> Unit,
+    onFilteredLogsChanged: (Boolean) -> Unit,
     onExitReasonLogChanged: (Boolean) -> Unit,
     onCrashLogChanged: (Boolean) -> Unit,
     onEventWatchLogChanged: (Boolean) -> Unit,
@@ -312,11 +314,21 @@ fun DebugScreen(
                 onCheckedChange = onAppDebugChanged,
             )
 
+            SettingsToggleCard(
+                title = stringResource(R.string.settings_filtered_logs_to_file_title),
+                subtitle = stringResource(R.string.settings_filtered_logs_to_file_desc),
+                icon = Icons.Outlined.BugReport,
+                accentColor = Warning,
+                checked = state.filteredLogs,
+                onCheckedChange = onFilteredLogsChanged,
+            )
+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {   // This log only works on API 30+ (Android 11+)
                 SettingsToggleCard(
                     title = stringResource(R.string.settings_debug_exit_reason_log_title),
                     subtitle = stringResource(R.string.settings_debug_exit_reason_log_subtitle),
                     icon = Icons.Outlined.BugReport,
+                    accentColor = SystemTagColor,
                     checked = state.exitReasonLog,
                     onCheckedChange = onExitReasonLogChanged,
                 )
@@ -326,6 +338,7 @@ fun DebugScreen(
                 title = stringResource(R.string.settings_debug_crash_log_title),
                 subtitle = stringResource(R.string.settings_debug_crash_log_subtitle),
                 icon = Icons.Outlined.BugReport,
+                accentColor = SystemTagColor,
                 checked = state.crashLog,
                 onCheckedChange = onCrashLogChanged,
             )
@@ -334,19 +347,20 @@ fun DebugScreen(
                 title = stringResource(R.string.settings_debug_event_watch_log_title),
                 subtitle = stringResource(R.string.settings_debug_event_watch_log_subtitle),
                 icon = Icons.Outlined.BugReport,
+                accentColor = SystemTagColor,
                 checked = state.eventWatchLog,
                 onCheckedChange = onEventWatchLogChanged,
             )
 
             AnimatedVisibility(
-                visible = state.appDebug || state.eventWatchLog,
+                visible = state.filteredLogs || state.eventWatchLog,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically(),
             ) {
                 LogTagFilterCard(
                     mode = state.tagFilterMode,
                     selectedTags = state.selectedTags,
-                    enabled = state.appDebug || state.eventWatchLog,
+                    enabled = state.filteredLogs || state.eventWatchLog,
                     onEdit = { showTagFilterDialog = true },
                     onModeChanged = onTagFilterModeChanged,
                     onRemoveSelectedTag = { tag ->
@@ -356,12 +370,12 @@ fun DebugScreen(
             }
 
             AnimatedVisibility(
-                visible = state.appDebug || state.eventWatchLog,
+                visible = state.filteredLogs || state.eventWatchLog,
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically(),
             ) {
                 var manualFilterText by remember { mutableStateOf(LogManager.getManualTextFilter()) }
-                LaunchedEffect(state.appDebug, state.eventWatchLog) { manualFilterText = LogManager.getManualTextFilter() }
+                LaunchedEffect(state.filteredLogs, state.eventWatchLog) { manualFilterText = LogManager.getManualTextFilter() }
                 val focusManager = LocalFocusManager.current
                 OutlinedTextField(
                     value = manualFilterText,
@@ -371,13 +385,13 @@ fun DebugScreen(
                     },
                     placeholder = { Text(stringResource(R.string.settings_debug_manual_text_filter_hint)) },
                     singleLine = true,
-                    enabled = state.appDebug || state.eventWatchLog,
+                    enabled = state.filteredLogs || state.eventWatchLog,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 8.dp)
-                        .focusProperties { canFocus = state.appDebug || state.eventWatchLog },
+                        .focusProperties { canFocus = state.filteredLogs || state.eventWatchLog },
                 )
             }
 

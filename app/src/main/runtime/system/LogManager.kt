@@ -5,7 +5,6 @@ import android.app.ApplicationExitInfo
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -18,11 +17,9 @@ import com.winlator.cmod.shared.io.FileUtils
 import timber.log.Timber
 import java.io.Closeable
 import java.io.File
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.core.content.edit
-import com.winlator.cmod.BuildConfig
 import androidx.core.net.toUri
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -88,6 +85,7 @@ object LogManager {
 
 
     private const val PREF_ENABLE_APP_DEBUG = "enable_app_debug"
+    private const val PREF_ENABLE_FILTERED_LOG = "enable_filtered_logs"
     private const val PREF_ENABLE_EXIT_REASON_LOG = "enable_exit_reason_log"
     private const val PREF_ENABLE_CRASH_LOG = "enable_crash_log"
     private const val PREF_ENABLE_EVENT_WATCH_LOG = "enable_event_watch_log"
@@ -107,6 +105,8 @@ object LogManager {
     @Volatile private var appContext: Context? = null
     @Volatile
     var cachedAppDebugEnabled = false
+    @Volatile
+    var cachedFilteredLogEnabled = false
     @Volatile private var cachedExitReasonLogEnabled = false
     @Volatile private var cachedCrashLogEnabled = false
     @Volatile private var cachedEventWatchEnabled = false
@@ -121,14 +121,14 @@ object LogManager {
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
     private val RELEVANT_KEYS = setOf(
-        PREF_ENABLE_APP_DEBUG, PREF_ENABLE_EXIT_REASON_LOG, PREF_ENABLE_CRASH_LOG,
-        PREF_ENABLE_EVENT_WATCH_LOG, PREF_TAG_FILTER_MODE, PREF_SELECTED_TAGS,
-        PREF_CUSTOM_TAGS, "winlator_path_uri",
+        PREF_ENABLE_APP_DEBUG, PREF_ENABLE_FILTERED_LOG, PREF_ENABLE_EXIT_REASON_LOG,
+        PREF_ENABLE_CRASH_LOG, PREF_ENABLE_EVENT_WATCH_LOG, PREF_TAG_FILTER_MODE,
+        PREF_SELECTED_TAGS, PREF_CUSTOM_TAGS, "winlator_path_uri",
     )
 
     /** Cheap, public, and the recommended guard for any genuinely expensive log message. */
     @JvmStatic
-    val isDebugEnabled: Boolean get() = cachedAppDebugEnabled
+    val isDebugEnabled: Boolean get() = cachedAppDebugEnabled || cachedFilteredLogEnabled
     @JvmStatic
     val isEventWatchEnabled: Boolean get() = cachedEventWatchEnabled
 
@@ -183,6 +183,7 @@ object LogManager {
     private fun refreshCaches(context: Context) {
         val prefs = PreferenceManager.getDefaultSharedPreferences(context)
         cachedAppDebugEnabled = prefs.getBoolean(PREF_ENABLE_APP_DEBUG, false)
+        cachedFilteredLogEnabled = prefs.getBoolean(PREF_ENABLE_FILTERED_LOG, false)
         cachedExitReasonLogEnabled = prefs.getBoolean(PREF_ENABLE_EXIT_REASON_LOG, false)
         cachedCrashLogEnabled = prefs.getBoolean(PREF_ENABLE_CRASH_LOG, false)
         cachedEventWatchEnabled = prefs.getBoolean(PREF_ENABLE_EVENT_WATCH_LOG, false)
@@ -520,22 +521,22 @@ object LogManager {
      * instead.
      */
     inline fun log(tag: String, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled) return
+        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
         baseLog(Level.DEBUG, tag, message(), null, context)
     }
 
     inline fun logI(tag: String, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled) return
+        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
         baseLog(Level.INFO, tag, message(), null, context)
     }
 
     inline fun logW(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled) return
+        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
         baseLog(Level.WARN, tag, message(), t, context)
     }
 
     inline fun logE(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled) return
+        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
         baseLog(Level.ERROR, tag, message(), t, context)
     }
 
@@ -564,7 +565,7 @@ object LogManager {
             }
         }
 
-        if (!cachedAppDebugEnabled) return
+        if (!cachedFilteredLogEnabled) return
         if (!passesTagFilter(tag)) return
         manualTextFilterPattern?.let { if (!it.containsMatchIn(message)) return }
 
@@ -738,7 +739,7 @@ object LogManager {
                     // Separator line with reason number: 0 = newest/last, larger = older
                     appendLine(
                         ctx, EXIT_REASONS_FILE, "I/$TAG",
-                        "\n---- Exit reason #${index+1} (1=new/last, ${maxExitReasons}=oldest) ----"
+                        "\n---- Exit reason #${index} (1=new/last, ${infos.size-1}=oldest) ----"
                     )
 
                     appendLine(
