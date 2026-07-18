@@ -243,7 +243,7 @@ class SteamService : Service() {
 
     // The current shared family group the logged in user is joined to.
     // Edited to allow one thread to clear/modify it while others are reading it without crashing.
-    private val familyGroupMembers = java.util.concurrent.CopyOnWriteArrayList<Int>()
+    internal val familyGroupMembers = java.util.concurrent.CopyOnWriteArrayList<Int>()
 
     private val appTokens: ConcurrentHashMap<Int, Long> = ConcurrentHashMap()
 
