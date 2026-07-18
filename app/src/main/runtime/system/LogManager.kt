@@ -486,6 +486,8 @@ object LogManager {
     // guard it with `if (LogManager.isDebugEnabled)`, or use the lambda
     // overload below from Kotlin.
 
+    // ToDo: For the TAG filters to work across the entire app, the following methods must be used to replace Timber or Log lines.
+
     @JvmStatic @JvmOverloads
     fun log(tag: String, message: String, context: Context? = null) =
         baseLog(Level.DEBUG, tag, message, null, context)
