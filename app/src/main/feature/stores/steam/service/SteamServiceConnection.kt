@@ -241,25 +241,6 @@ internal fun SteamService.handleAppForegrounded() {
     // Cancel any pending suspend timer — the app is back, so the session must stay up regardless of how long it was minimized.
     backgroundIdleJob?.cancel()
     backgroundIdleJob = null
-    /** ToDo start: Check this steam friends code
-     * I don’t really understand this part or how to handle it. The whole point of a
-     * ForegroundService is to be started to protect the app while it’s in the background,
-     * not to start it every time the app returns from the background.
-     */
-    // Restore the quiet foreground notification and drop the background-chat one.
-    /*if (isRunning && !isStopping) {
-        runCatching {
-            startForeground(1, notificationHelper.createForegroundNotification("Steam Service is running"))
-            notificationHelper.cancelBackgroundRunning()
-        }.onFailure { Timber.w(it, "Failed to restore SteamService foreground notification") }
-    }*/
-    // Updated code
-    /*if (isRunning && !isStopping) {
-        runCatching {
-            notificationHelper.cancel(STEAM_CHAT_BG_RUNNING_NOTIFICATION_ID)
-        }.onFailure { Timber.w(it, "Failed to cancel Steam Chat in background notification channel") }
-    }*/
-    // ToDo end.
     if (!suspendedForBackground) return
     suspendedForBackground = false
     Timber.i("App foregrounded — waking the WN-Steam-Client session")
@@ -276,22 +257,6 @@ internal fun SteamService.handleAppForegrounded() {
 /** App went to the background — arm the deferred suspend check. */
 internal fun SteamService.handleAppBackgrounded() {
     appInForeground = false
-    /** ToDo start: Check this Steam Friends code
-     * Regarding this part, based on my previous PR about the background, doing this is dangerous:
-     * the OS could interpret it as an attempt to start while already in the background,
-     * which would throw an exception because Android does not allow that behavior.
-     * Also, this just show a message, it doesn't change the friend notification channel.
-     */
-    /*if (PrefManager.chatStayRunningOnExit && isRunning && !isStopping) {
-        runCatching {
-            startForeground(
-                NotificationHelper.BACKGROUND_RUNNING_NOTIFICATION_ID,
-                notificationHelper.createBackgroundRunningNotification(),
-            )
-            notificationHelper.cancel()
-        }.onFailure { Timber.w(it, "Failed to show Steam background-chat notification") }
-    }*/
-    // ToDo end.
     scheduleBackgroundSuspendCheck()
 }
 
@@ -341,14 +306,10 @@ internal fun SteamService.maybeSuspendForBackground(): Boolean {
     picsGetProductInfoJob?.cancel()
     messagePollerJob?.cancel()
     wnSession?.let { s -> runCatching { s.disconnect() } }
-    // ToDo: Check this Steam Friends code, is still needed?:
-    /*scope.launch(Dispatchers.Main) {
-        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
-            .onFailure { Timber.w(it, "Failed to remove SteamService foreground state on background suspend") }
-        runCatching { notificationHelper.cancel() }
-            .onFailure { Timber.w(it, "Failed to cancel SteamService notification on background suspend") }
-    }*/
-    // ToDo end.
+    /** ToDo: To ensure the following code works correctly, it is necessary to investigate why,
+     * when SteamService is stopped in the background without an active game session, SteamService
+     * resumes after 5–10 seconds. This behavior can be verified in the active services notification.
+     */
     // Commented out because Steam auto-start again in background after a few seconds.
     /*runCatching { SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM) }
         .onFailure { Timber.w(it, "Failed to remove SteamService foreground state during background") }*/
