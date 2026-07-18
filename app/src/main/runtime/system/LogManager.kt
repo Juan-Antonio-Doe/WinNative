@@ -573,17 +573,23 @@ object LogManager {
         }
     }
 
-    // ── 2. Pause/resume window capture ───────────────────────────────
+    // ── Event Watch - window capture ───────────────────────────────
     //
     // Brackets exactly the period you care about: screen-lock to
-    // screen-unlock. Without android.permission.READ_LOGS granted via
+    // screen-unlock or app backgrounded. Without android.permission.READ_LOGS granted via
     // adb, this only ever sees your own UID's lines (your own Log.*
     // calls, including whatever you route through log()/logWarn()
     // above) — still useful for confirming your own lifecycle order.
     // WITH the permission granted once over adb, it will also surface
-    // system lines like ActivityManager's "Killing <proc> (adj N):
+        // system lines like ActivityManager's "Killing <proc> (adj N):
     // <reason>" messages, which is the signal of the OS killing a process.
 
+    /**
+     * ToDo: This method can be improved so that it can handle multiple events (calls) that the user can selectively manage, similar to how tags work.
+     * The best approach would be to use an enum to define what kind of event has been set, replacing the string parameter with the enum (more efficient)
+     * and adding new enum values as new events are introduced. In this way, it would be possible to select in the UI exactly which specific event
+     * you want to observe. Examples: ContainerBackground, SteamDownloads, Recording, etc.
+     */
     @JvmStatic
     fun startEventWatch(context: Context, label: String = "undefined-watcher") {
         if (!cachedEventWatchEnabled) return
