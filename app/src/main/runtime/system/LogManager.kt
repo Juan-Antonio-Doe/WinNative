@@ -263,23 +263,11 @@ object LogManager {
     }
 
     @JvmStatic
-    fun rotateLogsOnAppStart(context: Context) {
-        if (!isAnyLoggingEnabled(context)) return
-        val logsDir = getLogsDir(context)
-        logsDir.listFiles()?.filter { it.name.endsWith(".old.log") }?.forEach { it.delete() }
-        // Rename current .log → .old.log
-        logsDir.listFiles()?.filter { it.name.endsWith(".log") && !it.name.endsWith(".old.log") }?.forEach { file ->
-            file.renameTo(File(logsDir, file.name.replace(".log", ".old.log")))
-        }
-    }
-
-    @JvmStatic
     fun prepareForNewSession(context: Context) {
         stopAppLogging()
         val logsDir = getLogsDir(context)
-        logsDir.listFiles()?.filter { it.name.endsWith(".old.log") }?.forEach { it.delete() }
         logsDir.listFiles()?.filter { it.name.endsWith(".log") }?.forEach { it.delete() }
-        startAppLogging(context)
+        startAppLogging(context, reset = true)
     }
 
     // ── Tag management (settings UI surface) ──────────────────────────
@@ -407,14 +395,17 @@ object LogManager {
     }
 
     @JvmStatic
-    fun startAppLogging(context: Context) {
+    @JvmOverloads
+    fun startAppLogging(context: Context, reset: Boolean = false) {
         if (!cachedAppDebugEnabled) return
         val logFile = File(getLogsDir(context), "application.log")
 
         try {
             stopAppLogging()
-            logFile.delete()
-            runBlockingLogcatCommand(arrayOf("logcat", "-c"))
+            if (reset) {
+                logFile.delete()
+                runBlockingLogcatCommand(arrayOf("logcat", "-c"))
+            }
             val pid = android.os.Process.myPid()
             appLogProcess =
                 Runtime.getRuntime().exec(
@@ -470,7 +461,7 @@ object LogManager {
         return logsDir
             .listFiles()
             ?.filter {
-                it.isFile && (it.name.endsWith(".log") || it.name.endsWith(".old.log") || it.name.endsWith(".txt") || it.name.endsWith(".csv"))
+                it.isFile && (it.name.endsWith(".log") || it.name.endsWith(".txt") || it.name.endsWith(".csv"))
             }?.toTypedArray() ?: emptyArray()
     }
 
@@ -480,9 +471,7 @@ object LogManager {
 
     /** Deletes all shareable log files; returns the count removed. */
     @JvmStatic
-    fun deleteShareableLogs(context: Context): Int {
-        return getShareableLogFiles(context).count { it.delete() }
-    }
+    fun deleteShareableLogs(context: Context): Int = getShareableLogFiles(context).count { it.delete() }
 
     // ── 1. Custom breadcrumbs, callable from anywhere ───────────────
     //
