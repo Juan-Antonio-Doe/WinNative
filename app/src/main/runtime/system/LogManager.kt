@@ -585,16 +585,17 @@ object LogManager {
     // <reason>" messages, which is the signal of the OS killing a process.
 
     @JvmStatic
-    fun startEventWatch(context: Context, label: String = "watcher") {
+    fun startEventWatch(context: Context, label: String = "undefined-watcher") {
         if (!cachedEventWatchEnabled) return
 
         // Verify READ_LOGS permission at runtime
         val hasReadLogs = (ActivityCompat.checkSelfPermission(context, Manifest.permission.READ_LOGS)
         == PackageManager.PERMISSION_GRANTED)
-        if (!hasReadLogs) logW(TAG, null, context) { "READ_LOGS permission not granted, pause watch may not capture system logs" }
+        if (!hasReadLogs) logI(TAG, context) { "READ_LOGS permission not granted, pause watch may not capture system logs" }
 
         stopEventWatch()
         Thread({
+            var process: Process? = null
             try {
                 // Wipe the historical buffer so this file only contains lines from
                 // this pause window onward — not hours of unrelated backlog.
@@ -605,28 +606,41 @@ object LogManager {
                 val file = File(getLogsDir(context), "event_${safeLabel}_$stamp.log")
                 appendLine(context, file.name, "I/$TAG", "=== event watch started ($safeLabel) ===")
 
-                val command = mutableListOf("logcat", "-v", "threadtime", "-f", file.absolutePath)
+                val command = mutableListOf("logcat", "-v", "threadtime")
                 command.addAll(buildLogcatFilterSpecArgs())
-                manualTextFilter?.let { filter ->
-                    command.add("-e")
-                    val safeFilter = try {
-                        java.util.regex.Pattern.compile(filter)
-                        filter
-                    } catch (e: Exception) {
-                        // Portable escape for logcat's regex engine (RE2/libc)
-                        filter.replace(Regex("[\\\\.^$\\[\\]*+?{}()|]"), "\\\\$0")
-                    }
-                    command.add(safeFilter)
-                    command.add("-i") // Ensures logcat match is case-insensitive like baseLog
-                }
 
-                eventWatchProcess = Runtime.getRuntime().exec(command.toTypedArray())
-                closeProcessStdin(eventWatchProcess)
+                val started = ProcessBuilder(command)
+                    .redirectErrorStream(true) // merge stderr so a single reader drains both pipes
+                    .start()
+                process = started
+                eventWatchProcess = started
+                closeProcessStdin(started)
 
                 // Schedule a timeout to avoid hanging indefinitely if the user forget to disable this log.
                 watchTimeoutHandler.postDelayed(stopWatchTask, EVENT_WATCH_TIMEOUT_MS)
+
+                val textPattern = manualTextFilterPattern // snapshot once for the life of this watch
+
+                started.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                    java.io.BufferedWriter(
+                        java.io.OutputStreamWriter(java.io.FileOutputStream(file, true), Charsets.UTF_8)
+                    ).use { writer ->
+                        reader.forEachLine { line ->
+                            if (textPattern == null || textPattern.containsMatchIn(line)) {
+                                writer.write(line)
+                                writer.newLine()
+                                writer.flush()
+                            }
+                        }
+                    }
+                }
             } catch (e: Exception) {
-                logE(TAG, e, context) { "Failed to start event watch: ${e.message}" }
+                // stopEventWatch() destroys the process to end the read loop above,
+                // which normally surfaces here as a routine IOException (e.g.
+                // "Stream closed"). Only log when this wasn't an intentional stop.
+                if (process == null || eventWatchProcess === process) {
+                    logE(TAG, e, context) { "Failed to start event watch: ${e.message}" }
+                }
             }
         }, "LogManager-EventWatch").start()
     }
@@ -637,7 +651,15 @@ object LogManager {
         watchTimeoutHandler.removeCallbacks(stopWatchTask)
 
         try {
-            eventWatchProcess?.let(::destroyProcess)
+            // Only close stdin and destroy the process here. The capture thread in
+            // startEventWatch() owns and actively reads process.inputStream —
+            // closing it from this thread too would race with that read.
+            // Destroying the process closes its end of the pipe instead, which
+            // unblocks the capture thread's read with a clean EOF.
+            eventWatchProcess?.let { process ->
+                closeProcessStdin(process)
+                process.destroy()
+            }
             eventWatchProcess = null
         } catch (e: Exception) {
             logE(TAG,e) { "Failed to stop pause watch: ${e.message}" }
