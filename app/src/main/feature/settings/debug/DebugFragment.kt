@@ -129,6 +129,14 @@ class DebugFragment : Fragment() {
                             onRemoveCustomTag = { tag -> LogManager.removeCustomTag(requireContext(), tag); refresh() },
                             onManualTextFilterChanged = { text -> LogManager.setManualTextFilter(text) }, // no persistence, no refreshState needed
                             allLogTagOptions = remember(debugState.customTags) { LogManager.getAllKnownTags() },
+                            onExitGroupExpandedChanged = { expanded ->
+                                preferences.edit { putBoolean("debug_group_exit_expanded", expanded) }
+                                refresh()
+                            },
+                            onFilterGroupExpandedChanged = { expanded ->
+                                preferences.edit { putBoolean("debug_group_filter_expanded", expanded) }
+                                refresh()
+                            },
                             onWineDebugChanged = { checked ->
                                 preferences.edit { putBoolean("enable_wine_debug", checked) }
                                 com.winlator.cmod.runtime.system.LogManager
@@ -257,6 +265,9 @@ class DebugFragment : Fragment() {
                 tagFilterMode = LogManager.getTagFilterMode(),
                 selectedTags = LogManager.getSelectedTags().toList(),
                 customTags = LogManager.getCachedCustomTags(),
+
+                exitGroupExpanded = preferences.getBoolean("debug_group_exit_expanded", false),
+                filterGroupExpanded = preferences.getBoolean("debug_group_filter_expanded", false),
 
                 wineDebug = preferences.getBoolean("enable_wine_debug", false),
                 wineChannels = channels,

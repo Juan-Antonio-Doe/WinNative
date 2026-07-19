@@ -179,6 +179,9 @@ data class DebugState(
     val selectedTags: List<String> = emptyList(),
     val customTags: List<String> = emptyList(),
 
+    val exitGroupExpanded: Boolean = false,
+    val filterGroupExpanded: Boolean = false,
+
     val wineDebug: Boolean = false,
     val wineChannels: List<String> = emptyList(),
     val wineClasses: List<String> = emptyList(),
@@ -217,6 +220,8 @@ fun DebugScreen(
     onAddCustomTag: (String) -> Unit,
     onRemoveCustomTag: (String) -> Unit,
     onManualTextFilterChanged: (String) -> Unit,   // not persisted — live field only
+    onExitGroupExpandedChanged: (Boolean) -> Unit,
+    onFilterGroupExpandedChanged: (Boolean) -> Unit,
     onWineDebugChanged: (Boolean) -> Unit,
     onWineChannelsChanged: (List<String>) -> Unit,
     onWineClassesChanged: (List<String>) -> Unit,
@@ -330,7 +335,8 @@ fun DebugScreen(
             CollapsibleGroup(
                 title = stringResource(R.string.common_ui_exit), // add string resource "Exit"
                 accentColor = TextSecondary,
-                initiallyExpanded = state.exitReasonLog || state.crashLog,
+                expanded = state.exitGroupExpanded,
+                onExpandedChange = onExitGroupExpandedChanged,
             ) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {   // This log only works on API 30+ (Android 11+)
                     SettingsToggleCard(
@@ -357,7 +363,8 @@ fun DebugScreen(
             CollapsibleGroup(
                 title = stringResource(R.string.session_gyroscope_filtering), // add string resource "Filter"
                 accentColor = TextSecondary,
-                initiallyExpanded = state.filteredLogs || state.eventWatchLog,
+                expanded = state.filterGroupExpanded,
+                onExpandedChange = onFilterGroupExpandedChanged,
             ) {
                 SettingsToggleCard(
                     title = stringResource(R.string.settings_filtered_logs_to_file_title),
@@ -2363,11 +2370,10 @@ private fun CollapsibleGroup(
     title: String,
     subtitle: String? = null,
     accentColor: Color = Accent,
-    initiallyExpanded: Boolean = false,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     content: @Composable () -> Unit,
 ) {
-    var expanded by remember { mutableStateOf(initiallyExpanded) }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -2386,7 +2392,7 @@ private fun CollapsibleGroup(
                     .clip(RoundedCornerShape(10.dp))
                     .paneNavItem(
                         cornerRadius = 10.dp,
-                        onActivate = { expanded = !expanded },
+                        onActivate = { onExpandedChange(!expanded) },
                         highlightColor = NavHighlight,
                         tapToSelect = true
                     )
