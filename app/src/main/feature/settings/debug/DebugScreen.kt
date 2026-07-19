@@ -295,6 +295,11 @@ fun DebugScreen(
 
     val contentNav = rememberSettingsContentNav(bridge)
 
+    // Enable stable cursor to prevent focus jumping during layout shifts (like collapsing groups)
+    androidx.compose.runtime.SideEffect {
+        contentNav.stableCursor = true
+    }
+
     CompositionLocalProvider(LocalPaneNav provides contentNav) {
         Column(
             modifier =
@@ -324,7 +329,7 @@ fun DebugScreen(
             // Exit group
             CollapsibleGroup(
                 title = stringResource(R.string.common_ui_exit), // add string resource "Exit"
-                accentColor = SystemTagColor,
+                accentColor = TextSecondary,
                 initiallyExpanded = state.exitReasonLog || state.crashLog,
             ) {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {   // This log only works on API 30+ (Android 11+)
@@ -351,7 +356,7 @@ fun DebugScreen(
             // Filter group
             CollapsibleGroup(
                 title = stringResource(R.string.session_gyroscope_filtering), // add string resource "Filter"
-                accentColor = Warning,
+                accentColor = TextSecondary,
                 initiallyExpanded = state.filteredLogs || state.eventWatchLog,
             ) {
                 SettingsToggleCard(
@@ -2366,28 +2371,50 @@ private fun CollapsibleGroup(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .animateContentSize(),
-        colors = CardDefaults.cardColors(containerColor = CardDark)
+            .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(containerColor = CardDark),
+        shape = RoundedCornerShape(12.dp)
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
+        Column(modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded }
+                    .clip(RoundedCornerShape(10.dp))
+                    .paneNavItem(
+                        cornerRadius = 10.dp,
+                        onActivate = { expanded = !expanded },
+                        highlightColor = NavHighlight,
+                        tapToSelect = true
+                    )
+                    .padding(vertical = 4.dp, horizontal = 4.dp),
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = title, style = MaterialTheme.typography.titleMedium, color = TextSecondary)
+                    Text(
+                        text = title.uppercase(),
+                        color = accentColor,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
                     if (subtitle != null) {
-                        Text(text = subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextSecondary,
+                            fontSize = 11.sp
+                        )
                     }
                 }
-                IconButton(onClick = { expanded = !expanded }) {
-                    Icon(
-                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand"
-                    )
-                }
+                Icon(
+                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(20.dp)
+                )
             }
 
             AnimatedVisibility(
@@ -2395,7 +2422,10 @@ private fun CollapsibleGroup(
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically(),
             ) {
-                Column(modifier = Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    modifier = Modifier.padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     content()
                 }
             }

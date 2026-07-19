@@ -111,7 +111,7 @@ private val TextPrimary = Color(0xFFF0F4FF)
 private val TextSecondary = Color(0xFF7A8FA8)
 private val SettingsSliderHeight = 24.dp
 private const val SettingsSliderTrackScaleY = 0.72f
-private val Warning = Color(0xFFFF4444)
+private val Error = Color(0xFFFF4444)
 
 // State
 data class OtherSettingsState(
@@ -1390,7 +1390,7 @@ private fun HeartbeatFrequencyCard(
                             {
                                 Text(
                                     text = label,
-                                    color = if (isError) Warning else TextSecondary,
+                                    color = if (isError) Error else TextSecondary,
                                     fontSize = 11.sp,
                                 )
                             }
