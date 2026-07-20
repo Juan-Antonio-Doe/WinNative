@@ -109,7 +109,7 @@ object LogManager {
     var cachedFilteredLogEnabled = false
     @Volatile private var cachedExitReasonLogEnabled = false
     @Volatile private var cachedCrashLogEnabled = false
-    @Volatile private var cachedEventWatchEnabled = false
+    @Volatile var cachedEventWatchEnabled = false
     @Volatile private var cachedTagFilterMode = TagFilterMode.ALL
     @Volatile private var cachedSelectedTags: Set<String> = emptySet()
     @Volatile private var cachedCustomTags: Set<String> = emptySet()
@@ -128,7 +128,7 @@ object LogManager {
 
     /** Cheap, public, and the recommended guard for any genuinely expensive log message. */
     @JvmStatic
-    val isDebugEnabled: Boolean get() = cachedAppDebugEnabled || cachedFilteredLogEnabled
+    val isDebugEnabled: Boolean get() = cachedAppDebugEnabled || cachedFilteredLogEnabled || cachedEventWatchEnabled
     @JvmStatic
     val isEventWatchEnabled: Boolean get() = cachedEventWatchEnabled
 
@@ -137,7 +137,7 @@ object LogManager {
     private fun resolveContext(context: Context?): Context? = context?.applicationContext ?: appContext
 
     /**
-     * Call once, ideally from UnifiedActivity.onCreate(), so every later call
+     * Call once, ideally from PluviaApp.onCreate(), so every later call
      * site — including ones with no Context of their own — has a fallback,
      * and so the debug/path-dependent caches above are primed before
      * anything tries to log.
@@ -473,7 +473,7 @@ object LogManager {
     @JvmStatic
     fun deleteShareableLogs(context: Context): Int = getShareableLogFiles(context).count { it.delete() }
 
-    // ── 1. Custom breadcrumbs, callable from anywhere ───────────────
+    // ── Custom breadcrumbs, callable from anywhere ───────────────
     //
     // Writes directly to disk (open → write → flush → close on every
     // call) instead of going through a buffered writer. This is
@@ -512,22 +512,22 @@ object LogManager {
      * instead.
      */
     inline fun log(tag: String, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
+        if (!cachedAppDebugEnabled && !cachedFilteredLogEnabled && !cachedEventWatchEnabled) return
         baseLog(Level.DEBUG, tag, message(), null, context)
     }
 
     inline fun logI(tag: String, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
+        if (!cachedAppDebugEnabled && !cachedFilteredLogEnabled && !cachedEventWatchEnabled) return
         baseLog(Level.INFO, tag, message(), null, context)
     }
 
     inline fun logW(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
+        if (!cachedAppDebugEnabled && !cachedFilteredLogEnabled && !cachedEventWatchEnabled) return
         baseLog(Level.WARN, tag, message(), t, context)
     }
 
     inline fun logE(tag: String, t: Throwable? = null, context: Context? = null, message: () -> String) {
-        if (!cachedAppDebugEnabled || !cachedFilteredLogEnabled) return
+        if (!cachedAppDebugEnabled && !cachedFilteredLogEnabled && !cachedEventWatchEnabled) return
         baseLog(Level.ERROR, tag, message(), t, context)
     }
 
@@ -708,7 +708,7 @@ object LogManager {
         return spec
     }
 
-    // ── 3. Exit/killed reasons | crash trace ──────────────────────────
+    // ── Exit/killed reasons | crash trace ──────────────────────────
     //
     // No special permission needed (API 30+). Call once, early, on
     // every app start — it tells you, after the fact, exactly what
