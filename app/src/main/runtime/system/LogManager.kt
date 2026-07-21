@@ -137,6 +137,20 @@ object LogManager {
     private fun resolveContext(context: Context?): Context? = context?.applicationContext ?: appContext
 
     /**
+     * Exit reasons that constitute an abnormal termination and trigger a
+     * post-mortem report. Add entries here to cover new cases to be auto-reported.
+     */
+    @RequiresApi(Build.VERSION_CODES.R)
+    private val POST_MORTEM_REASONS: Set<Int> = setOf(
+        ApplicationExitInfo.REASON_ANR,
+        ApplicationExitInfo.REASON_CRASH,
+        ApplicationExitInfo.REASON_CRASH_NATIVE,
+        /*ApplicationExitInfo.REASON_SIGNALED,
+        ApplicationExitInfo.REASON_LOW_MEMORY,
+        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,*/
+    )
+
+    /**
      * Call once, ideally from PluviaApp.onCreate(), so every later call
      * site — including ones with no Context of their own — has a fallback,
      * and so the debug/path-dependent caches above are primed before
@@ -1032,18 +1046,4 @@ object LogManager {
             else -> ""
         }
     }
-
-    /**
-     * Exit reasons that constitute an abnormal termination and trigger a
-     * post-mortem report. Add entries here to cover new cases to be auto-reported.
-     */
-    @RequiresApi(Build.VERSION_CODES.R)
-    private val POST_MORTEM_REASONS: Set<Int> = setOf(
-        ApplicationExitInfo.REASON_ANR,
-        ApplicationExitInfo.REASON_CRASH,
-        ApplicationExitInfo.REASON_CRASH_NATIVE,
-        /*ApplicationExitInfo.REASON_SIGNALED,
-        ApplicationExitInfo.REASON_LOW_MEMORY,
-        ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE,*/
-    )
 }

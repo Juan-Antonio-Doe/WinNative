@@ -137,7 +137,6 @@ public class SessionKeepAliveService extends Service {
         LogManager.log(TAG, "onPauseSession", ctx);
         if (instance != null) {
             instance.acquireWakeLock();
-//            instance.runOomSweep();
             instance.startHeartbeat();
         }
         updateForegroundState(ctx);
