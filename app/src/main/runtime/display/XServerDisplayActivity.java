@@ -137,6 +137,7 @@ import com.winlator.cmod.runtime.audio.midi.MidiManager;
 import com.winlator.cmod.runtime.display.renderer.VulkanRenderer;
 import com.winlator.cmod.runtime.display.ui.FrameRating;
 import com.winlator.cmod.runtime.display.ui.MagnifierView;
+import com.winlator.cmod.runtime.display.ui.MangoHudView;
 import com.winlator.cmod.runtime.display.ui.XServerSurfaceView;
 import com.winlator.cmod.shared.android.FixedFontScaleAppCompatActivity;
 import com.winlator.cmod.runtime.input.ui.InputControlsView;
@@ -274,6 +275,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private int currentGestureProfileId = 0;
     private ImageFs imageFs;
     private FrameRating frameRating = null;
+    private MangoHudView mangoHud = null;
     private boolean effectiveShowFPS = false;
     // Phone gauge HUD (Compose host) shown with touch controls disabled while a physical controller + external display are active.
     private boolean controllerHudMode = false;
@@ -326,6 +328,15 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private com.winlator.cmod.runtime.system.SessionLogWriter sessionLogWriter;
     private int taskAffinityMask = 0;
     private int taskAffinityMaskWoW64 = 0;
+    private final HashSet<Integer> guestAffinityCheckedPids = new HashSet<>();
+    private volatile boolean serviceAffinityStarted = false;
+    private static final String[] SERVICE_AFFINITY_PROCESSES = {
+        "services.exe", "rpcss.exe", "svchost.exe", "winedevice.exe",
+        "plugplay.exe", "conhost.exe", "start.exe"
+    };
+    private static final String[] SHELL_AFFINITY_PROCESSES = {
+        "explorer.exe", "steamwebhelper.exe"
+    };
     private int frameRatingWindowId = -1;
     private android.net.wifi.WifiManager.MulticastLock multicastLock;
     private final float[] xform = XForm.getInstance();
@@ -1622,6 +1633,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             @Override
             public void onMapWindow(Window window) {
                 assignTaskAffinity(window);
+                pinServiceAffinity();
                 if ((effectiveShowFPS || controllerHudMode) && frameRating != null) {
                     syncFrameRatingWithExistingWindows();
                 }
@@ -1636,6 +1648,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             public void onFramePresented(Window window, WindowManager.FrameSource source, int serial) {
                 if (shouldRecordFpsFrame(window, source)) {
                     frameRating.recordGameFrame(source == WindowManager.FrameSource.PRESENT, serial);
+                    if (mangoHud != null) mangoHud.recordGameFrame(source == WindowManager.FrameSource.PRESENT);
                 }
             }
 
@@ -4091,7 +4104,13 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 gestureProfileNames,
                 gestureSelectedIndex,
                 preferences.getFloat("right_stick_sensitivity", 1.0f),
-                preferences.getFloat("screen_touch_rs_sensitivity", 1.25f)
+                preferences.getFloat("screen_touch_rs_sensitivity", 1.25f),
+                preferences.getBoolean(MangoHudView.PREF_ENABLED, false),
+                MangoHudView.elementsFromPrefs(preferences),
+                MangoHudView.alphaFromPrefs(preferences),
+                MangoHudView.bgAlphaFromPrefs(preferences),
+                MangoHudView.scaleFromPrefs(preferences),
+                MangoHudView.lockedFromPrefs(preferences)
         );
 
         // Always-present "Output" tab (live controls while swapped, otherwise a Cast entry point).
@@ -4200,6 +4219,58 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                         preferences.edit().putBoolean(FrameRating.PREF_HUD_FRAMETIME_NUMERIC, enabled).apply();
                         if (frameRating != null) frameRating.setFrametimeNumericMode(enabled);
                         renderDrawerMenu();
+                    }
+
+                    @Override
+                    public void onMangoHudChanged(boolean enabled) {
+                        preferences.edit().putBoolean(MangoHudView.PREF_ENABLED, enabled).apply();
+                        if (enabled && mangoHud == null && xServerDisplayFrame != null) {
+                            mangoHud = new MangoHudView(XServerDisplayActivity.this);
+                            xServerDisplayFrame.addView(mangoHud);
+                        }
+                        if (mangoHud != null) {
+                            mangoHud.setEngineName(mangoEngineLabel());
+                            mangoHud.setSessionInfo(
+                                    xServer != null ? xServer.screenInfo.width + "x" + xServer.screenInfo.height : null,
+                                    wineInfo != null ? String.valueOf(wineInfo) : null);
+                            mangoHud.setHudVisible(enabled);
+                        }
+                        renderDrawerMenu();
+                    }
+
+                    @Override
+                    public void onMangoHudElementToggled(int index, boolean enabled) {
+                        MangoHudView.saveElement(preferences, index, enabled);
+                        if (mangoHud != null) mangoHud.setElementEnabled(index, enabled);
+                        renderDrawerMenu();
+                    }
+
+                    @Override
+                    public void onMangoHudAlphaChanged(float alpha) {
+                        MangoHudView.saveAlpha(preferences, alpha);
+                        if (mangoHud != null) mangoHud.setTextAlphaValue(alpha);
+                        renderDrawerMenu();
+                    }
+
+                    @Override
+                    public void onMangoHudBackgroundAlphaChanged(float alpha) {
+                        MangoHudView.saveBgAlpha(preferences, alpha);
+                        if (mangoHud != null) mangoHud.setBackgroundAlphaValue(alpha);
+                        renderDrawerMenu();
+                    }
+
+                    @Override
+                    public void onMangoHudLockChanged(boolean locked) {
+                        MangoHudView.saveLocked(preferences, locked);
+                        if (mangoHud != null) mangoHud.setLockedValue(locked);
+                        renderDrawerMenu();
+                    }
+
+                    @Override
+                    public void onMangoHudScaleChanged(float scale) {
+                        // No drawer rebuild: the slider owns its value while dragging.
+                        MangoHudView.saveScale(preferences, scale);
+                        if (mangoHud != null) mangoHud.setScaleValue(scale);
                     }
 
                     @Override
@@ -7142,6 +7213,21 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         rootView.addView(frameRating);
         if (perfController != null) perfController.attachToFrameRating(frameRating);
 
+        if (preferences.getBoolean(MangoHudView.PREF_ENABLED, false)) {
+            mangoHud = new MangoHudView(this);
+            mangoHud.setEngineName(mangoEngineLabel());
+            mangoHud.setSessionInfo(
+                    xServer != null ? xServer.screenInfo.width + "x" + xServer.screenInfo.height : null,
+                    wineInfo != null ? String.valueOf(wineInfo) : null);
+            // Deferred: adding while the frame is detached puts this view inside the frame's later
+            // attach walk, which FrameRating's onAttachedToWindow bringToFront() reorders mid-walk —
+            // the child that slides into the already-visited slot never gets attached. post() runs
+            // after that walk completes, so the add always lands on an attached parent.
+            rootView.post(() -> {
+                if (mangoHud != null && mangoHud.getParent() == null) rootView.addView(mangoHud);
+            });
+        }
+
         setupControllerHudDetection();
 
         startFullscreenStretched = "1".equals(getShortcutSetting("fullscreenStretched",
@@ -7720,20 +7806,16 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
 
         envVars.put("GALLIUM_DRIVER", "zink");
-        envVars.put("LIBGL_KOPPER_DISABLE", "true");
+        // Kopper off only on the Steam path; normal GL needs it on to present.
+        if (isSteamShortcut()) {
+            envVars.put("LIBGL_KOPPER_DISABLE", "true");
+        }
 
         if (firstTimeBoot) {
             Log.d("XServerDisplayActivity", "First time container boot, re-extracting libs");
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/wrapper" + ".tzst", rootDir);
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "layers" + ".tzst", rootDir);
             TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/extra_libs" + ".tzst", rootDir);
-            if (wineInfo != null && wineInfo.isArm64EC() && !GPUInformation.getRenderer(null, null).contains("Mali")) {
-                try {
-                    TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, this, "graphics_driver/zink_dlls.tzst", new File(rootDir, ImageFs.WINEPREFIX + "/drive_c/windows"));
-                } catch (Exception e) {
-                    Log.w("XServerDisplayActivity", "zink_dlls.tzst not found or extraction failed", e);
-                }
-            }
         }
 
         // FFmpeg 8 libs for Wine's winedmo media path (arm64ec native Wine only; these
@@ -10997,16 +11079,121 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         if (taskAffinityMask == 0 && taskAffinityMaskWoW64 == 0) return;
         int processId = window.getProcessId();
         String className = window.getClassName();
-        int processAffinity = window.isWoW64() ? taskAffinityMaskWoW64 : taskAffinityMask;
-
-        if (processAffinity == 0) return;
 
         if (processId > 0) {
-            winHandler.setProcessAffinity(processId, processAffinity);
+            if (taskAffinityMask == taskAffinityMaskWoW64) {
+                winHandler.setProcessAffinity(processId, taskAffinityMask);
+            } else {
+                applyGuestResolvedAffinity(processId, window.isWoW64());
+            }
         }
         else if (!className.isEmpty()) {
-            winHandler.setProcessAffinity(window.getClassName(), processAffinity);
+            int processAffinity = window.isWoW64() ? taskAffinityMaskWoW64 : taskAffinityMask;
+            if (processAffinity != 0) winHandler.setProcessAffinity(className, processAffinity);
         }
+    }
+
+    // Background service processes have no windows and never pass through
+    // assignTaskAffinity. One complete pass over the guest process list at the
+    // first window map pins every matching instance BY PID (by-name requests
+    // can't address duplicates like the two winedevice hosts). Children spawned
+    // afterwards inherit their parent's mask, so a single early pass keeps the
+    // policy without ever re-sending — manual task manager changes stick.
+    // Services go to the efficiency cores (lower half), shell/UI to the 64-bit
+    // list, winhandler to all cores.
+    private void pinServiceAffinity() {
+        if (serviceAffinityStarted || winHandler == null) return;
+        serviceAffinityStarted = true;
+        new Thread(() -> {
+            final WinHandler wh = winHandler;
+            if (wh == null) return;
+            int coreCount = Runtime.getRuntime().availableProcessors();
+            final int littleMask = ProcessHelper.getAffinityMask(0, coreCount / 2);
+            final int fullMask = ProcessHelper.getAffinityMask(0, coreCount);
+            final CountDownLatch latch = new CountDownLatch(1);
+            final OnGetProcessInfoListener previous = wh.getOnGetProcessInfoListener();
+            final OnGetProcessInfoListener pinner = (index, numProcesses, processInfo) -> {
+                if (previous != null) previous.onGetProcessInfo(index, numProcesses, processInfo);
+                if (processInfo != null) {
+                    int desired = serviceMaskForProcess(processInfo.name, littleMask, fullMask);
+                    if (desired != 0 && processInfo.affinityMask != desired) {
+                        wh.setProcessAffinity(processInfo.pid, desired);
+                    }
+                }
+                if (processInfo == null || index == numProcesses - 1) latch.countDown();
+            };
+            wh.setOnGetProcessInfoListener(pinner);
+            try {
+                wh.listProcesses();
+                if (!latch.await(3000, TimeUnit.MILLISECONDS)) serviceAffinityStarted = false;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                if (wh.getOnGetProcessInfoListener() == pinner) {
+                    wh.setOnGetProcessInfoListener(previous);
+                }
+            }
+        }, "ServiceAffinityPin").start();
+    }
+
+    private int serviceMaskForProcess(String name, int littleMask, int fullMask) {
+        if (name == null) return 0;
+        if (name.equalsIgnoreCase("winhandler.exe")) return fullMask;
+        for (String service : SERVICE_AFFINITY_PROCESSES) {
+            if (name.equalsIgnoreCase(service)) return littleMask;
+        }
+        for (String shell : SHELL_AFFINITY_PROCESSES) {
+            if (name.equalsIgnoreCase(shell)) return taskAffinityMask;
+        }
+        return 0;
+    }
+
+    // _NET_WM_WOW64 can be absent on 32-bit guest windows, so when the two masks
+    // differ, resolve the wow64 flag from the guest process list and apply once.
+    // The window property is only the fallback if the guest doesn't answer.
+    private void applyGuestResolvedAffinity(final int pid, final boolean windowSaysWoW64) {
+        synchronized (guestAffinityCheckedPids) {
+            if (!guestAffinityCheckedPids.add(pid)) return;
+        }
+        new Thread(() -> {
+            final WinHandler handler = winHandler;
+            if (handler == null) return;
+            final CountDownLatch latch = new CountDownLatch(1);
+            final boolean[] resolved = new boolean[1];
+            final OnGetProcessInfoListener previous = handler.getOnGetProcessInfoListener();
+            final OnGetProcessInfoListener resolver = (index, numProcesses, processInfo) -> {
+                if (previous != null) previous.onGetProcessInfo(index, numProcesses, processInfo);
+                if (processInfo != null && processInfo.pid == pid) {
+                    int desired = processInfo.wow64Process ? taskAffinityMaskWoW64 : taskAffinityMask;
+                    Log.d("XServerDisplayActivity", "Guest affinity resolve pid=" + pid
+                            + " wow64=" + processInfo.wow64Process
+                            + " mask=0x" + Integer.toHexString(desired));
+                    if (desired != 0) handler.setProcessAffinity(pid, desired);
+                    resolved[0] = true;
+                    latch.countDown();
+                } else if (processInfo == null || index == numProcesses - 1) {
+                    latch.countDown();
+                }
+            };
+            handler.setOnGetProcessInfoListener(resolver);
+            try {
+                handler.listProcesses();
+                latch.await(3000, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                if (handler.getOnGetProcessInfoListener() == resolver) {
+                    handler.setOnGetProcessInfoListener(previous);
+                }
+            }
+            if (!resolved[0]) {
+                int fallback = windowSaysWoW64 ? taskAffinityMaskWoW64 : taskAffinityMask;
+                if (fallback != 0) handler.setProcessAffinity(pid, fallback);
+                synchronized (guestAffinityCheckedPids) {
+                    guestAffinityCheckedPids.remove(pid);
+                }
+            }
+        }, "GuestAffinityResolve").start();
     }
 
     private void changeFrameRatingVisibility(Window window, Property property) {
@@ -11077,6 +11264,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             }
         }
 
+        boolean windowChanged = bestWindow != null && frameRatingWindowId != bestWindow.id;
         if (bestWindow != null) {
             lastRendererName = bestRenderer;
             lastGpuName = bestGpu;
@@ -11090,14 +11278,30 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         runOnUiThread(() -> {
             frameRating.setRenderer(lastRendererName);
             frameRating.setGpuName(lastGpuName);
+            if (mangoHud != null) {
+                mangoHud.setEngineName(mangoEngineLabel());
+                // New game window: drop loading/menu frames from the averages.
+                if (windowChanged) mangoHud.resetMetrics();
+            }
             updateHUDRenderMode();
         });
+    }
+
+    /** Engine label for the Mango HUD: renderer name plus the DXVK version when running DXVK. */
+    private String mangoEngineLabel() {
+        String name = lastRendererName != null ? lastRendererName : "Vulkan";
+        if (name.toLowerCase().contains("dxvk") && dxwrapperConfig != null) {
+            String version = dxwrapperConfig.get("version");
+            if (version != null && !version.isEmpty()) return "DXVK " + version;
+        }
+        return name;
     }
 
     private boolean shouldRecordFpsFrame(Window window, WindowManager.FrameSource source) {
         // Perf recording is driven solely by the record-to-file toggle, independent of HUD/controller.
         boolean recording = perfController != null && perfController.isActive();
-        if ((!effectiveShowFPS && !controllerHudMode && !recording) || frameRating == null || window == null) return false;
+        boolean mangoVisible = mangoHud != null && mangoHud.getVisibility() == View.VISIBLE;
+        if ((!effectiveShowFPS && !controllerHudMode && !recording && !mangoVisible) || frameRating == null || window == null) return false;
         if (source == WindowManager.FrameSource.UNKNOWN) return false;
         if (frameRatingWindowId == window.id) return true;
         if (isRelatedToFrameRatingWindow(window)) return true;

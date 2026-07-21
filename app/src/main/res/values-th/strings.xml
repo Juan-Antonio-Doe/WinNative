@@ -158,6 +158,8 @@
     </plurals>
 
     <!-- Library > Games -->
+    <string name="library_games_scrape_artwork">ดึงภาพประกอบ</string>
+    <string name="library_games_scraping_artwork">กำลังดึง</string>
     <string name="library_games_shortcut_created">สร้างทางลัดแล้ว</string>
     <string name="library_games_failed_to_create_shortcut">สร้างทางลัดไม่สำเร็จ: %s</string>
     <string name="library_games_install_path">เส้นทางติดตั้ง</string>
@@ -287,6 +289,7 @@
     <string name="containers_list_duplicate_title">ทำสำเนาคอนเทนเนอร์</string>
     <string name="containers_list_confirm_remove">ลบคอนเทนเนอร์นี้หรือไม่? ไฟล์บันทึกเกมที่เก็บไว้ข้างในจะถูกลบอย่างถาวร ไฟล์บันทึกที่ซิงค์กับคลาวด์จะยังอยู่บนคลาวด์ แต่การเปลี่ยนแปลงในเครื่องที่ยังไม่ได้ซิงค์จะสูญหาย — ซิงค์ไฟล์บันทึกบนคลาวด์ของเกมนี้ก่อนหากต้องการเก็บไว้</string>
     <string name="containers_list_confirm_duplicate">คุณต้องการทำสำเนาคอนเทนเนอร์นี้หรือไม่?</string>
+    <string name="containers_list_duplicate_failed">ทำสำเนาคอนเทนเนอร์ไม่สำเร็จ</string>
 
     <!-- Shortcuts > List -->
     <string name="shortcuts_list_confirm_remove">คุณต้องการลบทางลัดนี้หรือไม่?</string>
@@ -745,6 +748,32 @@
     <string name="session_drawer_hud_element_temp">B.TMP</string>
     <string name="session_drawer_hud_element_graph">กราฟ</string>
     <string name="session_drawer_hud_element_cpu_temp">C.TMP</string>
+    <string name="session_drawer_hud_mango_style">HUD สไตล์ Mango</string>
+    <string name="session_drawer_hud_mango_settings">การตั้งค่า Mango HUD</string>
+    <string name="mango_hud_element_gpu_load">โหลด GPU</string>
+    <string name="mango_hud_element_gpu_temp">อุณหภูมิ GPU</string>
+    <string name="mango_hud_element_cpu_load">โหลด CPU</string>
+    <string name="mango_hud_element_cpu_temp">อุณหภูมิ CPU</string>
+    <string name="mango_hud_element_ram">RAM</string>
+    <string name="mango_hud_element_battery">แบตเตอรี่</string>
+    <string name="mango_hud_element_lows" formatted="false">ค่าต่ำสุด 1%</string>
+    <string name="mango_hud_element_graph">กราฟเฟรมไทม์</string>
+    <string name="mango_hud_element_engine">เอนจิน</string>
+    <string name="mango_hud_element_vram">VRAM</string>
+    <string name="mango_hud_element_cpu_mhz">คล็อก CPU</string>
+    <string name="mango_hud_element_gpu_clock">คล็อก GPU</string>
+    <string name="mango_hud_element_cores">รายคอร์</string>
+    <string name="mango_hud_element_network">เครือข่าย</string>
+    <string name="mango_hud_element_swap">สวอป</string>
+    <string name="mango_hud_element_resolution">ความละเอียด</string>
+    <string name="mango_hud_element_wine">เวอร์ชัน Wine</string>
+    <string name="mango_hud_element_duration">เวลาเซสชัน</string>
+    <string name="mango_hud_element_clock">นาฬิกา</string>
+    <string name="mango_hud_element_throttle">สถานะควบคุมความร้อน</string>
+    <string name="mango_hud_group_memory">หน่วยความจำ</string>
+    <string name="mango_hud_group_system">ระบบ</string>
+    <string name="mango_hud_lock">ล็อก HUD</string>
+    <string name="mango_hud_lock_subtitle">ให้การสัมผัสผ่านไปยังปุ่มควบคุมด้านหลัง HUD กด HUD ค้างไว้เพื่อล็อก (5s)</string>
     <string name="hud_position_menu_title">ย้าย HUD ไปที่</string>
     <string name="hud_position_top_left">บนซ้าย</string>
     <string name="hud_position_top_center">บนกลาง</string>
@@ -1020,6 +1049,7 @@
     <string name="settings_general_select_wallpaper">เลือกวอลเปเปอร์</string>
     <string name="settings_general_title">ทั่วไป</string>
     <string name="settings_general_enable_file_provider">เปิดใช้งาน File Provider</string>
+    <string name="settings_general_enable_auto_scraping">เปิดใช้งานการดึงอัตโนมัติ</string>
     <string name="settings_general_take_effect_next_startup">ตัวเลือกนี้จะมีผลเมื่อเริ่มต้นครั้งถัดไป</string>
     <string name="settings_general_imagefs">Imagefs</string>
     <string name="settings_general_reinstall_imagefs">ติดตั้ง Imagefs ใหม่</string>
@@ -1043,6 +1073,7 @@
     <string name="settings_general_xinput_toggle_summary">ปิดการจัดการ XInput เมื่อคุณต้องการควบคุมเมาส์และแป้นพิมพ์แบบเฉพาะ</string>
     <string name="settings_external_display_output_summary">ย้ายเกมไปยังจอแสดงผลภายนอกที่เชื่อมต่อแทนการมิเรอร์หน้าจอนี้ แว่นตาจะใช้จอแสดงผลของตัวเองเสมอ</string>
     <string name="settings_general_file_provider_summary">เปิดให้ตัวเลือกเอกสารและตัวจัดการไฟล์ของ Android เข้าถึงไฟล์ WinNative ได้</string>
+    <string name="settings_general_auto_scraping_summary">การตั้งค่านี้ให้ WinNative ดึงภาพประกอบเกมกำหนดเองโดยอัตโนมัติ</string>
     <string name="settings_general_open_browser_summary">เปิดลิงก์เว็บที่รองรับในเบราว์เซอร์ของ Android แทนที่จะเปิดใน Wine</string>
     <string name="settings_general_clipboard_summary">อนุญาตให้คัดลอกและวางระหว่าง Android กับเซสชัน Wine</string>
     <string name="settings_general_imagefs_summary">คืนค่าไฟล์ระบบที่มาพร้อมเครื่องโดยไม่ลบคอนเทนเนอร์ที่มีอยู่</string>
@@ -1117,6 +1148,8 @@
     <string name="settings_other_language_title">ภาษา</string>
     <string name="settings_other_language_summary">เลือกภาษาที่แสดง</string>
     <string name="settings_other_language_system_default">ค่าเริ่มต้นของระบบ</string>
+    <string name="settings_other_game_language_title">ภาษาเกม</string>
+    <string name="settings_other_game_language_summary">ภาษาที่ต้องการสำหรับการดาวน์โหลด Steam/Epic/GOG</string>
 
     <string name="settings_other_section_integration">การผสานรวม</string>
     <string name="settings_other_setup_wizard_title">ตัวช่วยตั้งค่า</string>
@@ -1504,6 +1537,7 @@
     <string name="steam_friends_section_online">ออนไลน์ (%1$d)</string>
     <string name="steam_friends_section_offline">ออฟไลน์ (%1$d)</string>
     <string name="steam_friends_none_loaded">ยังไม่ได้โหลดเพื่อน</string>
+    <string name="steam_friends_chat_off">แชทถูกปิดอยู่ เปิดบริการแชทอีกครั้งเพื่อดูเพื่อนของคุณ</string>
     <string name="steam_friends_self_you">คุณ</string>
     <string name="steam_friends_in_game">ในเกม</string>
     <string name="steam_friends_join">เข้าร่วม</string>
@@ -1529,6 +1563,8 @@
     <string name="steam_join_the_game">เกม</string>
     <string name="steam_friends_settings">การตั้งค่า</string>
     <string name="steam_chat_settings_title">การตั้งค่าแชท</string>
+    <string name="steam_chat_setting_service">บริการแชท</string>
+    <string name="steam_chat_setting_service_desc">เข้าสู่ระบบเพื่อดูเพื่อนและแชท ปิดเพื่อออฟไลน์</string>
     <string name="steam_chat_setting_notifications">การแจ้งเตือนแชท</string>
     <string name="steam_chat_setting_notifications_desc">แสดงการแจ้งเตือนเมื่อคุณได้รับข้อความ</string>
     <string name="steam_chat_setting_heads">หัวแชท</string>

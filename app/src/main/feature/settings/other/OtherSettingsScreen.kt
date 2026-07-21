@@ -34,6 +34,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ArrowCircleDown
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.BatteryAlert
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -63,6 +64,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.SliderState
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -126,6 +128,7 @@ data class OtherSettingsState(
     val cursorLock: Boolean = false,
     val xinputDisabled: Boolean = false,
     val enableFileProvider: Boolean = true,
+    val enableAutoScraping: Boolean = false,
     val openInBrowser: Boolean = false,
     val shareClipboard: Boolean = false,
     val enableBackgroundSession: Boolean = false,
@@ -173,6 +176,7 @@ fun OtherSettingsScreen(
     onCursorLockChanged: (Boolean) -> Unit,
     onXinputDisabledChanged: (Boolean) -> Unit,
     onEnableFileProviderChanged: (Boolean) -> Unit,
+    onAutoScrapingChanged: (Boolean) -> Unit,
     onOpenInBrowserChanged: (Boolean) -> Unit,
     onShareClipboardChanged: (Boolean) -> Unit,
     onEnableBackgroundSessionChanged: (Boolean) -> Unit,
@@ -346,6 +350,14 @@ fun OtherSettingsScreen(
             )
 
             SettingsToggleCard(
+                title = stringResource(R.string.settings_general_enable_auto_scraping),
+                subtitle = stringResource(R.string.settings_general_auto_scraping_summary),
+                icon = Icons.Outlined.ArrowCircleDown,
+                checked = state.enableAutoScraping,
+                onCheckedChange = onAutoScrapingChanged,
+            )
+
+            SettingsToggleCard(
                 title = stringResource(R.string.settings_general_enable_file_provider),
                 subtitle = stringResource(R.string.settings_general_file_provider_summary),
                 icon = Icons.Outlined.Folder,
@@ -451,9 +463,7 @@ private fun SettingsToggleCard(
             Switch(
                 checked = checked,
                 onCheckedChange = onCheckedChange,
-                modifier = Modifier
-                    .scale(0.78f)
-                    .focusProperties { canFocus = false },
+                modifier = Modifier.scale(0.78f).focusProperties { canFocus = false },
                 colors =
                     outlinedSwitchColors(
                         accentColor = accentColor,
@@ -600,8 +610,7 @@ private fun SettingsDropdownCard(
                                 onActivate = { if (options.isNotEmpty()) expanded = true },
                                 highlightColor = NavHighlight,
                                 tapToSelect = true,
-                            )
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            ).padding(horizontal = 10.dp, vertical = 7.dp)
                             .widthIn(max = 180.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -739,8 +748,7 @@ private fun SoundFontCard(
                                     onActivate = { if (files.isNotEmpty()) expanded = true },
                                     highlightColor = NavHighlight,
                                     tapToSelect = true,
-                                )
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                ).padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
@@ -1106,8 +1114,7 @@ private fun SmallActionButton(
                     onActivate = onClick,
                     highlightColor = NavHighlight,
                     tapToSelect = true,
-                )
-                .padding(horizontal = 11.dp, vertical = 6.dp),
+                ).padding(horizontal = 11.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
