@@ -894,7 +894,7 @@ class SetupWizardActivity : FixedFontScaleFragmentActivity() {
 
         storageGranted.value = hasStoragePermission()
         notifGranted.value = hasNotificationPermissionSilently()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {  // Enable background protection by default on Android 14+.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {  // Enable background protection by default on Android 13+.
             if (!androidx.preference.PreferenceManager.getDefaultSharedPreferences(this).contains("enable_background_session")) {
                 androidx.preference.PreferenceManager.getDefaultSharedPreferences(this)
                     .edit { putBoolean("enable_background_session", true) }
