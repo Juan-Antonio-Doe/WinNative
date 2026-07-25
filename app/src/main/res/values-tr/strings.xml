@@ -1621,6 +1621,9 @@ Yüklü konum:
     <string name="settings_content_refresh">Yenile</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Uygulama günlüğü</string>
+    <string name="settings_debug_application_logging_subtitle">Günlük kaydını açar ve günlük seçeneklerini gösterir</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Çıkış nedeni günlüğü</string>
     <string name="settings_debug_exit_reason_log_subtitle">Uygulama işleminin son kapanma nedenini kaydeder</string>
     <string name="settings_debug_crash_log_title">Çökme günlüğü</string>

@@ -1621,6 +1621,9 @@
     <string name="settings_content_refresh">รีเฟรช</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">การบันทึกล็อกแอป</string>
+    <string name="settings_debug_application_logging_subtitle">เปิดการบันทึกล็อกและแสดงตัวเลือกการบันทึกล็อก</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">บันทึกสาเหตุการปิด</string>
     <string name="settings_debug_exit_reason_log_subtitle">บันทึกว่าทำไมโปรเซสของแอปจึงถูกปิดครั้งล่าสุด</string>
     <string name="settings_debug_crash_log_title">บันทึกการแครช</string>

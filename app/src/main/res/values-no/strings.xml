@@ -1621,6 +1621,9 @@ Installert bane:
     <string name="settings_content_refresh">Oppdater</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Applogging</string>
+    <string name="settings_debug_application_logging_subtitle">Slå på logging og vis loggalternativene</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Logg over avslutningsårsak</string>
     <string name="settings_debug_exit_reason_log_subtitle">Registrerer hvorfor appens prosess sist ble avsluttet</string>
     <string name="settings_debug_crash_log_title">Krasjlogg</string>

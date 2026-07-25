@@ -1621,6 +1621,9 @@ Ruta instalada:
     <string name="settings_content_refresh">Actualizar</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Registro de la aplicación</string>
+    <string name="settings_debug_application_logging_subtitle">Activa el registro y muestra las opciones de registro</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Registro de motivo de salida</string>
     <string name="settings_debug_exit_reason_log_subtitle">Registra por qué terminó el proceso de la aplicación</string>
     <string name="settings_debug_crash_log_title">Registro de fallos</string>

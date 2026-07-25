@@ -1570,6 +1570,9 @@ Percorso installato:
     <string name="session_gyroscope_orientation_mode">Inclina per mirare (orientamento)</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Registro applicazione</string>
+    <string name="settings_debug_application_logging_subtitle">Attiva il registro e mostra le opzioni di registro</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Registro motivo uscita</string>
     <string name="settings_debug_exit_reason_log_subtitle">Registra il motivo della terminazione del processo dell\'app</string>
     <string name="settings_debug_crash_log_title">Registro errori</string>

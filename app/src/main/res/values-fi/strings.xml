@@ -1621,6 +1621,9 @@ Asennuspolku:
     <string name="settings_content_refresh">Päivitä</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Sovelluslokitus</string>
+    <string name="settings_debug_application_logging_subtitle">Ota lokitus käyttöön ja näytä lokitusasetukset</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Sulkeutumissyyloki</string>
     <string name="settings_debug_exit_reason_log_subtitle">Tallentaa syyn, miksi sovelluksen prosessi viimeksi päättyi</string>
     <string name="settings_debug_crash_log_title">Kaatumisloki</string>

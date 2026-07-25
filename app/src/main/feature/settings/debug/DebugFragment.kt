@@ -73,6 +73,23 @@ class DebugFragment : Fragment() {
                             state = debugState,
                             wineChannelOptions = wineChannelOptions,
                             wineClassOptions = SettingsConfig.WINE_DEBUG_CLASSES,
+                            onLoggingEnabledChanged = { checked ->
+                                preferences.edit {
+                                    putBoolean("enable_application_logging", checked)
+                                    if (!checked) {
+                                        putBoolean("enable_app_debug", false)
+                                        putBoolean("enable_exit_reason_log", false)
+                                        putBoolean("enable_crash_log", false)
+                                        putBoolean("enable_filtered_logs", false)
+                                        putBoolean("enable_event_watch_log", false)
+                                    }
+                                }
+                                refresh()
+                            },
+                            onLogcatGroupExpandedChanged = { expanded ->
+                                preferences.edit { putBoolean("debug_group_logcat_expanded", expanded) }
+                                refresh()
+                            },
                             onAppDebugChanged = { checked ->
                                 preferences.edit { putBoolean("enable_app_debug", checked) }
                                 com.winlator.cmod.runtime.system.ApplicationLogGate
@@ -257,6 +274,7 @@ class DebugFragment : Fragment() {
                 ?.filter { it.isNotBlank() } ?: emptyList()
         debugState =
             DebugState(
+                loggingEnabled = preferences.getBoolean("enable_application_logging", false),
                 appDebug = preferences.getBoolean("enable_app_debug", false),
                 filteredLogs = preferences.getBoolean("enable_filtered_logs", false),
                 exitReasonLog = preferences.getBoolean("enable_exit_reason_log", false),
@@ -266,6 +284,7 @@ class DebugFragment : Fragment() {
                 selectedTags = LogManager.getSelectedTags().toList(),
                 customTags = LogManager.getCachedCustomTags(),
 
+                logcatGroupExpanded = preferences.getBoolean("debug_group_logcat_expanded", false),
                 exitGroupExpanded = preferences.getBoolean("debug_group_exit_expanded", false),
                 filterGroupExpanded = preferences.getBoolean("debug_group_filter_expanded", false),
 

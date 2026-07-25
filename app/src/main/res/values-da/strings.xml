@@ -1623,6 +1623,9 @@ Installeret sti:
     <string name="settings_content_refresh">Opdater</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">App-logning</string>
+    <string name="settings_debug_application_logging_subtitle">Slå logning til, og vis logindstillingerne</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Log over lukningsårsag</string>
     <string name="settings_debug_exit_reason_log_subtitle">Registrerer, hvorfor appens proces sidst blev afsluttet</string>
     <string name="settings_debug_crash_log_title">Nedbrudslog</string>

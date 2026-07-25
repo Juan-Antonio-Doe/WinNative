@@ -1528,6 +1528,9 @@
     <string name="settings_content_refresh">Обновить</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Журналирование приложения</string>
+    <string name="settings_debug_application_logging_subtitle">Включить журналирование и показать параметры журналирования</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Журнал причин завершения</string>
     <string name="settings_debug_exit_reason_log_subtitle">Записывать причину последнего завершения процесса приложения</string>
     <string name="settings_debug_crash_log_title">Журнал сбоев</string>

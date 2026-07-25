@@ -1621,6 +1621,9 @@ Installerad sökväg:
     <string name="settings_content_refresh">Uppdatera</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Applikationsloggning</string>
+    <string name="settings_debug_application_logging_subtitle">Slå på loggning och visa loggalternativen</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Logg över avslutsorsak</string>
     <string name="settings_debug_exit_reason_log_subtitle">Registrerar varför appens process senast avslutades</string>
     <string name="settings_debug_crash_log_title">Kraschlogg</string>

@@ -1628,6 +1628,9 @@
     <string name="settings_content_refresh">Оновити</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Журналювання застосунку</string>
+    <string name="settings_debug_application_logging_subtitle">Увімкнути журналювання та показати параметри журналювання</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Журнал причин завершення</string>
     <string name="settings_debug_exit_reason_log_subtitle">Записувати причину останнього завершення процесу застосунку</string>
     <string name="settings_debug_crash_log_title">Журнал збоїв</string>

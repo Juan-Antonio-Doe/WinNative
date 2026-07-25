@@ -1622,6 +1622,9 @@
     <string name="settings_content_refresh">刷新</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">应用日志记录</string>
+    <string name="settings_debug_application_logging_subtitle">开启日志记录并显示日志选项</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">退出原因日志</string>
     <string name="settings_debug_exit_reason_log_subtitle">记录应用进程上次终止的原因</string>
     <string name="settings_debug_crash_log_title">崩溃日志</string>

@@ -1621,6 +1621,9 @@ Cale instalata:
     <string name="settings_content_refresh">Reîmprospătează</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Jurnalizare aplicatie</string>
+    <string name="settings_debug_application_logging_subtitle">Activeaza jurnalizarea si afiseaza optiunile de jurnalizare</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Jurnal motiv de închidere</string>
     <string name="settings_debug_exit_reason_log_subtitle">Înregistrează de ce s-a încheiat ultima dată procesul aplicației</string>
     <string name="settings_debug_crash_log_title">Jurnal de blocări</string>

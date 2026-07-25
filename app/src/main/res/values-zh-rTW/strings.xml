@@ -1621,6 +1621,9 @@
     <string name="settings_content_refresh">重新整理</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">應用程式日誌記錄</string>
+    <string name="settings_debug_application_logging_subtitle">開啟日誌記錄並顯示日誌選項</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">結束原因日誌</string>
     <string name="settings_debug_exit_reason_log_subtitle">記錄應用程式程序上次終止的原因</string>
     <string name="settings_debug_crash_log_title">當機日誌</string>

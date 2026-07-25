@@ -1558,6 +1558,9 @@
     <string name="settings_content_refresh">रीफ़्रेश</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">एप्लिकेशन लॉगिंग</string>
+    <string name="settings_debug_application_logging_subtitle">लॉगिंग चालू करें और लॉगिंग विकल्प दिखाएँ</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">बंद होने के कारण का लॉग</string>
     <string name="settings_debug_exit_reason_log_subtitle">रिकॉर्ड करता है कि ऐप प्रोसेस पिछली बार क्यों बंद हुई</string>
     <string name="settings_debug_crash_log_title">क्रैश लॉग</string>

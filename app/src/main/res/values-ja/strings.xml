@@ -1621,6 +1621,9 @@
     <string name="settings_content_refresh">更新</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">アプリのログ記録</string>
+    <string name="settings_debug_application_logging_subtitle">ログ記録を有効にしてログオプションを表示します</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">終了理由ログ</string>
     <string name="settings_debug_exit_reason_log_subtitle">アプリのプロセスが前回終了した理由を記録します</string>
     <string name="settings_debug_crash_log_title">クラッシュログ</string>

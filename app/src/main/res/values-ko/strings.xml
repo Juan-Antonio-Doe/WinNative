@@ -1623,6 +1623,9 @@
     <string name="settings_content_refresh">새로고침</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">애플리케이션 로깅</string>
+    <string name="settings_debug_application_logging_subtitle">로깅을 켜고 로깅 옵션을 표시합니다</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">종료 원인 로그</string>
     <string name="settings_debug_exit_reason_log_subtitle">앱 프로세스가 마지막으로 종료된 이유를 기록합니다</string>
     <string name="settings_debug_crash_log_title">충돌 로그</string>

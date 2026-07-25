@@ -1628,6 +1628,9 @@ Zainstalowana ścieżka:
     <string name="settings_content_refresh">Odśwież</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Rejestrowanie aplikacji</string>
+    <string name="settings_debug_application_logging_subtitle">Włącz rejestrowanie i pokaż opcje rejestrowania</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Log przyczyny zamknięcia</string>
     <string name="settings_debug_exit_reason_log_subtitle">Zapisuje, dlaczego proces aplikacji został ostatnio zakończony</string>
     <string name="settings_debug_crash_log_title">Log awarii</string>

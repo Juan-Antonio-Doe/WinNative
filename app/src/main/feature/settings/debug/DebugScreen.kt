@@ -135,7 +135,6 @@ import com.winlator.cmod.shared.ui.toast.WinToast
 import com.winlator.cmod.shared.ui.outlinedSwitchColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.text.KeyboardActions
@@ -148,6 +147,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
@@ -170,6 +170,7 @@ private val SystemTagColor = Color(0xFFFFCC00)
 
 // State
 data class DebugState(
+    val loggingEnabled: Boolean = false,
     val appDebug: Boolean = false,
     val filteredLogs: Boolean = false,
     val exitReasonLog: Boolean = false,
@@ -179,6 +180,7 @@ data class DebugState(
     val selectedTags: List<String> = emptyList(),
     val customTags: List<String> = emptyList(),
 
+    val logcatGroupExpanded: Boolean = false,
     val exitGroupExpanded: Boolean = false,
     val filterGroupExpanded: Boolean = false,
 
@@ -210,6 +212,7 @@ fun DebugScreen(
     wineChannelOptions: List<String>,
     wineClassOptions: List<String>,
     allLogTagOptions: List<String>,           // LogManager.getAllKnownTags()
+    onLoggingEnabledChanged: (Boolean) -> Unit,
     onAppDebugChanged: (Boolean) -> Unit,
     onFilteredLogsChanged: (Boolean) -> Unit,
     onExitReasonLogChanged: (Boolean) -> Unit,
@@ -220,6 +223,7 @@ fun DebugScreen(
     onAddCustomTag: (String) -> Unit,
     onRemoveCustomTag: (String) -> Unit,
     onManualTextFilterChanged: (String) -> Unit,   // not persisted — live field only
+    onLogcatGroupExpandedChanged: (Boolean) -> Unit,
     onExitGroupExpandedChanged: (Boolean) -> Unit,
     onFilterGroupExpandedChanged: (Boolean) -> Unit,
     onWineDebugChanged: (Boolean) -> Unit,
@@ -323,108 +327,153 @@ fun DebugScreen(
             SectionLabel(stringResource(R.string.common_ui_application))
 
             SettingsToggleCard(
-                title = stringResource(R.string.common_ui_application),
-                subtitle = stringResource(R.string.settings_debug_log_to_file_desc),
+                title = stringResource(R.string.settings_debug_application_logging_title),
+                subtitle = stringResource(R.string.settings_debug_application_logging_subtitle),
                 icon = Icons.Outlined.BugReport,
                 accentColor = Warning,
-                checked = state.appDebug,
-                onCheckedChange = onAppDebugChanged,
+                checked = state.loggingEnabled,
+                onCheckedChange = onLoggingEnabledChanged,
             )
 
-            // Exit group
-            CollapsibleGroup(
-                title = stringResource(R.string.common_ui_exit), // add string resource "Exit"
-                accentColor = TextSecondary,
-                expanded = state.exitGroupExpanded,
-                onExpandedChange = onExitGroupExpandedChanged,
+            AnimatedVisibility(
+                visible = state.loggingEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
             ) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {   // This log only works on API 30+ (Android 11+)
+                // Logcat group
+                CollapsibleGroup(
+                    title = stringResource(R.string.settings_debug_logcat_title),
+                    accentColor = TextSecondary,
+                    expanded = state.logcatGroupExpanded,
+                    onExpandedChange = onLogcatGroupExpandedChanged,
+                ) {
                     SettingsToggleCard(
-                        title = stringResource(R.string.settings_debug_exit_reason_log_title),
-                        subtitle = stringResource(R.string.settings_debug_exit_reason_log_subtitle),
+                        title = stringResource(R.string.settings_debug_application_logging_title),
+                        subtitle = stringResource(R.string.settings_debug_log_to_file_desc),
                         icon = Icons.Outlined.BugReport,
-                        accentColor = SystemTagColor,
-                        checked = state.exitReasonLog,
-                        onCheckedChange = onExitReasonLogChanged,
+                        accentColor = Warning,
+                        checked = state.appDebug,
+                        onCheckedChange = onAppDebugChanged,
+                    )
+
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_debug_steam_logs_title),
+                        subtitle = stringResource(R.string.settings_debug_steam_logs_subtitle),
+                        icon = Icons.Outlined.SportsEsports,
+                        checked = state.steamLogs,
+                        onCheckedChange = onSteamLogsChanged,
+                    )
+
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_debug_input_logs),
+                        subtitle = stringResource(R.string.settings_debug_input_logs_description),
+                        icon = Icons.Outlined.Gamepad,
+                        checked = state.inputLogs,
+                        onCheckedChange = onInputLogsChanged,
+                    )
+
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_debug_download_logs),
+                        subtitle = stringResource(R.string.settings_debug_download_logs_description),
+                        icon = Icons.Outlined.CloudDownload,
+                        checked = state.downloadLogs,
+                        onCheckedChange = onDownloadLogsChanged,
                     )
                 }
-
-                SettingsToggleCard(
-                    title = stringResource(R.string.settings_debug_crash_log_title),
-                    subtitle = stringResource(R.string.settings_debug_crash_log_subtitle),
-                    icon = Icons.Outlined.BugReport,
-                    accentColor = SystemTagColor,
-                    checked = state.crashLog,
-                    onCheckedChange = onCrashLogChanged,
-                )
             }
 
-            // Filter group
-            CollapsibleGroup(
-                title = stringResource(R.string.session_gyroscope_filtering), // add string resource "Filter"
-                accentColor = TextSecondary,
-                expanded = state.filterGroupExpanded,
-                onExpandedChange = onFilterGroupExpandedChanged,
+            AnimatedVisibility(
+                visible = state.loggingEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
             ) {
-                SettingsToggleCard(
-                    title = stringResource(R.string.settings_filtered_logs_to_file_title),
-                    subtitle = stringResource(R.string.settings_filtered_logs_to_file_desc),
-                    icon = Icons.Outlined.BugReport,
-                    accentColor = Warning,
-                    checked = state.filteredLogs,
-                    onCheckedChange = onFilteredLogsChanged,
-                )
-
-                SettingsToggleCard(
-                    title = stringResource(R.string.settings_debug_event_watch_log_title),
-                    subtitle = stringResource(R.string.settings_debug_event_watch_log_subtitle),
-                    icon = Icons.Outlined.BugReport,
-                    accentColor = SystemTagColor,
-                    checked = state.eventWatchLog,
-                    onCheckedChange = onEventWatchLogChanged,
-                )
-
-                AnimatedVisibility(
-                    visible = state.filteredLogs || state.eventWatchLog,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
+                // Exit group
+                CollapsibleGroup(
+                    title = stringResource(R.string.common_ui_exit),
+                    accentColor = TextSecondary,
+                    expanded = state.exitGroupExpanded,
+                    onExpandedChange = onExitGroupExpandedChanged,
                 ) {
-                    LogTagFilterCard(
-                        mode = state.tagFilterMode,
-                        selectedTags = state.selectedTags,
-                        enabled = state.filteredLogs || state.eventWatchLog,
-                        onEdit = { showTagFilterDialog = true },
-                        onModeChanged = onTagFilterModeChanged,
-                        onRemoveSelectedTag = { tag ->
-                            onSelectedTagsChanged(state.selectedTags - tag)
-                        },
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {   // This log only works on API 30+ (Android 11+)
+                        SettingsToggleCard(
+                            title = stringResource(R.string.settings_debug_exit_reason_log_title),
+                            subtitle = stringResource(R.string.settings_debug_exit_reason_log_subtitle),
+                            icon = Icons.Outlined.BugReport,
+                            accentColor = SystemTagColor,
+                            checked = state.exitReasonLog,
+                            onCheckedChange = onExitReasonLogChanged,
+                        )
+                    }
+
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_debug_crash_log_title),
+                        subtitle = stringResource(R.string.settings_debug_crash_log_subtitle),
+                        icon = Icons.Outlined.BugReport,
+                        accentColor = SystemTagColor,
+                        checked = state.crashLog,
+                        onCheckedChange = onCrashLogChanged,
                     )
                 }
+            }
 
-                AnimatedVisibility(
-                    visible = state.filteredLogs || state.eventWatchLog,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
+            AnimatedVisibility(
+                visible = state.loggingEnabled,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically(),
+            ) {
+                // Filter group
+                CollapsibleGroup(
+                    title = stringResource(R.string.session_gyroscope_filtering),
+                    accentColor = TextSecondary,
+                    expanded = state.filterGroupExpanded,
+                    onExpandedChange = onFilterGroupExpandedChanged,
                 ) {
-                    var manualFilterText by remember { mutableStateOf(LogManager.getManualTextFilter()) }
-                    LaunchedEffect(state.filteredLogs, state.eventWatchLog) { manualFilterText = LogManager.getManualTextFilter() }
-                    val focusManager = LocalFocusManager.current
-                    OutlinedTextField(
-                        value = manualFilterText,
-                        onValueChange = {
-                            manualFilterText = it
-                            onManualTextFilterChanged(it)
-                        },
-                        placeholder = { Text(stringResource(R.string.settings_debug_manual_text_filter_hint)) },
-                        singleLine = true,
-                        enabled = state.filteredLogs || state.eventWatchLog,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp)
-                            .focusProperties { canFocus = state.filteredLogs || state.eventWatchLog },
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_filtered_logs_to_file_title),
+                        subtitle = stringResource(R.string.settings_filtered_logs_to_file_desc),
+                        icon = Icons.Outlined.BugReport,
+                        accentColor = Warning,
+                        checked = state.filteredLogs,
+                        onCheckedChange = onFilteredLogsChanged,
                     )
+
+                    SettingsToggleCard(
+                        title = stringResource(R.string.settings_debug_event_watch_log_title),
+                        subtitle = stringResource(R.string.settings_debug_event_watch_log_subtitle),
+                        icon = Icons.Outlined.BugReport,
+                        accentColor = SystemTagColor,
+                        checked = state.eventWatchLog,
+                        onCheckedChange = onEventWatchLogChanged,
+                    )
+
+                    AnimatedVisibility(
+                        visible = state.filteredLogs || state.eventWatchLog,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        LogTagFilterCard(
+                            mode = state.tagFilterMode,
+                            selectedTags = state.selectedTags,
+                            enabled = state.filteredLogs || state.eventWatchLog,
+                            onEdit = { showTagFilterDialog = true },
+                            onModeChanged = onTagFilterModeChanged,
+                            onRemoveSelectedTag = { tag ->
+                                onSelectedTagsChanged(state.selectedTags - tag)
+                            },
+                        )
+                    }
+
+                    AnimatedVisibility(
+                        visible = state.filteredLogs || state.eventWatchLog,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                    ) {
+                        ManualTextFilterField(
+                            enabled = state.filteredLogs || state.eventWatchLog,
+                            resetKey = state.filteredLogs to state.eventWatchLog,
+                            onTextChanged = onManualTextFilterChanged,
+                        )
+                    }
                 }
             }
 
@@ -483,30 +532,6 @@ fun DebugScreen(
 */
 
             SettingsToggleCard(
-                title = stringResource(R.string.settings_debug_steam_logs_title),
-                subtitle = stringResource(R.string.settings_debug_steam_logs_subtitle),
-                icon = Icons.Outlined.SportsEsports,
-                checked = state.steamLogs,
-                onCheckedChange = onSteamLogsChanged,
-            )
-
-            SettingsToggleCard(
-                title = stringResource(R.string.settings_debug_input_logs),
-                subtitle = stringResource(R.string.settings_debug_input_logs_description),
-                icon = Icons.Outlined.Gamepad,
-                checked = state.inputLogs,
-                onCheckedChange = onInputLogsChanged,
-            )
-
-            SettingsToggleCard(
-                title = stringResource(R.string.settings_debug_download_logs),
-                subtitle = stringResource(R.string.settings_debug_download_logs_description),
-                icon = Icons.Outlined.CloudDownload,
-                checked = state.downloadLogs,
-                onCheckedChange = onDownloadLogsChanged,
-            )
-
-            SettingsToggleCard(
                 title = stringResource(R.string.settings_hud_record_to_file_title),
                 subtitle = stringResource(R.string.settings_hud_record_to_file_summary),
                 icon = Icons.Outlined.Speed,
@@ -548,6 +573,64 @@ private fun SectionLabel(
         letterSpacing = 1.4.sp,
         modifier = modifier.padding(bottom = 4.dp),
     )
+}
+
+@Composable
+private fun ManualTextFilterField(
+    enabled: Boolean,
+    resetKey: Any,
+    onTextChanged: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(LogManager.getManualTextFilter()) }
+    LaunchedEffect(resetKey) { text = LogManager.getManualTextFilter() }
+    var focused by remember { mutableStateOf(false) }
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(top = 8.dp)
+                .height(38.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .border(
+                    width = 1.dp,
+                    color = if (focused) Accent else CardBorder,
+                    shape = RoundedCornerShape(8.dp),
+                ).paneNavItem(
+                    cornerRadius = 8.dp,
+                    onActivate = { if (enabled) runCatching { focusRequester.requestFocus() } },
+                    highlightColor = NavHighlight,
+                    tapToSelect = true,
+                ).padding(horizontal = 12.dp),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        if (text.isEmpty()) {
+            Text(
+                text = stringResource(R.string.settings_debug_manual_text_filter_hint),
+                fontSize = 12.sp,
+                color = TextSecondary,
+            )
+        }
+        androidx.compose.foundation.text.BasicTextField(
+            value = text,
+            onValueChange = {
+                text = it
+                onTextChanged(it)
+            },
+            enabled = enabled,
+            singleLine = true,
+            textStyle = androidx.compose.ui.text.TextStyle(color = TextPrimary, fontSize = 13.sp),
+            cursorBrush = SolidColor(Accent),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focusRequester)
+                    .onFocusChanged { focused = it.isFocused },
+        )
+    }
 }
 
 // Settings toggle card

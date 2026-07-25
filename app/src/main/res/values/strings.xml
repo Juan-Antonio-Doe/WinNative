@@ -1139,6 +1139,9 @@ E.g. <b>META</b> for <i>META key</i>, \n
     <!-- Settings > Debug -->
     <string name="settings_debug_wine_debug_channel">Wine Debug Channel</string>
     <string name="settings_debug_title">Debug</string>
+    <string name="settings_debug_application_logging_title">Application logging</string>
+    <string name="settings_debug_application_logging_subtitle">Turn on logging and show the logging options</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Exit reason log</string>
     <string name="settings_debug_exit_reason_log_subtitle">Record why the app process last terminated</string>
     <string name="settings_debug_crash_log_title">Crash log</string>

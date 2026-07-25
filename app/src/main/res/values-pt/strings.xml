@@ -1621,6 +1621,9 @@ Caminho instalado:
     <string name="settings_content_refresh">Atualizar</string>
 
     <!-- Settings > Debug -->
+    <string name="settings_debug_application_logging_title">Registo da aplicação</string>
+    <string name="settings_debug_application_logging_subtitle">Ativar o registo e mostrar as opções de registo</string>
+    <string name="settings_debug_logcat_title">Logcat</string>
     <string name="settings_debug_exit_reason_log_title">Registo do motivo de encerramento</string>
     <string name="settings_debug_exit_reason_log_subtitle">Regista porque é que o processo da aplicação terminou da última vez</string>
     <string name="settings_debug_crash_log_title">Registo de falhas</string>
