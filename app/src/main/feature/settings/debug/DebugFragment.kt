@@ -78,12 +78,20 @@ class DebugFragment : Fragment() {
                                     putBoolean("enable_application_logging", checked)
                                     if (!checked) {
                                         putBoolean("enable_app_debug", false)
+                                        putBoolean("enable_input_logs", false)
+                                        putBoolean("enable_download_logs", false)
                                         putBoolean("enable_exit_reason_log", false)
                                         putBoolean("enable_crash_log", false)
                                         putBoolean("enable_filtered_logs", false)
                                         putBoolean("enable_event_watch_log", false)
                                     }
                                 }
+                                if (!checked) {
+                                    com.winlator.cmod.feature.stores.steam.utils.PrefManager.enableSteamLogs = false
+                                    com.winlator.cmod.runtime.system.ApplicationLogGate
+                                        .setEnabled(false)
+                                }
+
                                 refresh()
                             },
                             onLogcatGroupExpandedChanged = { expanded ->
@@ -196,18 +204,21 @@ class DebugFragment : Fragment() {
                                 ) {
                                     timber.log.Timber.plant(timber.log.Timber.DebugTree())
                                 }
+                                if (checked) ensureAppLoggingOn()
                                 com.winlator.cmod.runtime.system.LogManager
                                     .updateLoggingState(ctx)
                                 refresh()
                             },
                             onInputLogsChanged = { checked ->
                                 preferences.edit { putBoolean("enable_input_logs", checked) }
+                                if (checked) ensureAppLoggingOn()
                                 com.winlator.cmod.runtime.system.LogManager
                                     .updateLoggingState(ctx)
                                 refresh()
                             },
                             onDownloadLogsChanged = { checked ->
                                 preferences.edit { putBoolean("enable_download_logs", checked) }
+                                if (checked) ensureAppLoggingOn()
                                 com.winlator.cmod.runtime.system.LogManager
                                     .updateLoggingState(ctx)
                                 refresh()
@@ -535,6 +546,17 @@ class DebugFragment : Fragment() {
         val set = HashSet(downloadedLogKeys())
         if (set.remove(key)) preferences.edit { putStringSet(KEY_DOWNLOADED_LOGS, set) }
         refresh()
+    }
+
+    // Steam/input/download logs are only flags on log statements that land in the application
+    // log capture, so they produce nothing unless application logging is running.
+    private fun ensureAppLoggingOn() {
+        if (preferences.getBoolean("enable_app_debug", false)) return
+        preferences.edit { putBoolean("enable_app_debug", true) }
+        com.winlator.cmod.runtime.system.ApplicationLogGate
+            .setEnabled(true)
+        com.winlator.cmod.runtime.system.LogManager
+            .startAppLogging(requireContext(), reset = false)
     }
 
     companion object {

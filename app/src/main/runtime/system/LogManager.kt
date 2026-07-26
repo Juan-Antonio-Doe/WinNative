@@ -113,10 +113,12 @@ object LogManager {
     @Volatile private var cachedTagFilterMode = TagFilterMode.ALL
     @Volatile private var cachedSelectedTags: Set<String> = emptySet()
     @Volatile private var cachedCustomTags: Set<String> = emptySet()
-    @Volatile private var cachedLogsDir: File? = null
 
     @Volatile private var manualTextFilter: String? = null
     @Volatile private var manualTextFilterPattern: Regex? = null
+
+    @Volatile private var cachedPrivateLogsDir: File? = null
+    @Volatile private var cachedExternalLogsDir: File? = null
 
     private var prefsListener: SharedPreferences.OnSharedPreferenceChangeListener? = null
 
@@ -135,6 +137,13 @@ object LogManager {
     private var crashHandlerInitialized = false
 
     private fun resolveContext(context: Context?): Context? = context?.applicationContext ?: appContext
+
+    // Every log file carries the date/time it was created, the same way SessionLogWriter names the
+    // box64/fex/wine logs. Resolved once per process so appends keep landing in the same file.
+    private val sessionStamp: String by lazy {
+        LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss", Locale.US))
+    }
+    private val stampedNames = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /**
      * Exit reasons that constitute an abnormal termination and trigger a
@@ -206,7 +215,8 @@ object LogManager {
         }.getOrDefault(TagFilterMode.ALL)
         cachedSelectedTags = splitPref(prefs, PREF_SELECTED_TAGS)
         cachedCustomTags = splitPref(prefs, PREF_CUSTOM_TAGS)
-        cachedLogsDir = resolveLogsDir(context, prefs)
+        cachedPrivateLogsDir = resolveLogsDir(context, prefs)
+        cachedExternalLogsDir = resolveLogsDir(context, prefs, true)
     }
 
     private fun splitPref(prefs: SharedPreferences, key: String): Set<String> =
@@ -217,8 +227,12 @@ object LogManager {
     // ── Logs directory ───────────────────────────────────────────────
 
     @JvmStatic
-    fun getLogsDir(context: Context): File {
-        cachedLogsDir?.let { return it }
+    fun getLogsDir(context: Context, isExternal: Boolean = false): File {
+        if (isExternal)
+            cachedExternalLogsDir?.let { return it }
+        else
+            cachedPrivateLogsDir?.let { return it }
+
         val ctx = resolveContext(context) ?: return File(SettingsConfig.DEFAULT_WINLATOR_PATH, "logs").also {
             // No context available anywhere yet (init() never called and none
             // passed in) — fall back without caching, since we can't listen
@@ -226,21 +240,26 @@ object LogManager {
             if (!it.exists()) it.mkdirs()
         }
 
-        // Use the same user-visible WinNative folder as everything else,
-        // not the package-private external-files dir, so logs can be
-        // browsed/pulled without ADB or root.
-        val dir = resolveLogsDir(ctx, PreferenceManager.getDefaultSharedPreferences(ctx))
-        cachedLogsDir = dir
+        val dir = resolveLogsDir(ctx, PreferenceManager.getDefaultSharedPreferences(ctx), isExternal)
+        if (isExternal) cachedExternalLogsDir = dir else cachedPrivateLogsDir = dir
 
         Timber.tag(TAG).d("Logs dir: $dir")
 
         return dir
     }
 
-    private fun resolveLogsDir(context: Context, prefs: SharedPreferences): File {
-        val currentPath = resolvePathString(
-            prefs.getString("winlator_path_uri", null), SettingsConfig.DEFAULT_WINLATOR_PATH, context,
-        )
+    private fun resolveLogsDir(context: Context, prefs: SharedPreferences, isExternal: Boolean = false): File {
+        val currentPath: File = if (isExternal) {
+            File(
+                resolvePathString(
+                    prefs.getString("winlator_path_uri", null),
+                    SettingsConfig.DEFAULT_WINLATOR_PATH,
+                    context
+                )
+            )
+        } else {
+            context.getExternalFilesDir(null) ?: context.filesDir
+        }
 
         Timber.d("Winnative pathString: $currentPath")
 
@@ -267,6 +286,10 @@ object LogManager {
             prefs.getBoolean("enable_steam_logs", false) ||
             prefs.getBoolean("enable_input_logs", false) ||
             prefs.getBoolean("enable_download_logs", false) ||
+            cachedFilteredLogEnabled ||
+            cachedEventWatchEnabled ||
+            cachedExitReasonLogEnabled ||
+            cachedCrashLogEnabled ||
             cachedAppDebugEnabled
     }
 
@@ -276,12 +299,32 @@ object LogManager {
         }
     }
 
+    // Container boot only (XServerDisplayActivity), never app startup: a booting session starts
+    // from clean logs, while a plain cold start keeps whatever the previous runs wrote.
     @JvmStatic
     fun prepareForNewSession(context: Context) {
         stopAppLogging()
         val logsDir = getLogsDir(context)
         logsDir.listFiles()?.filter { it.name.endsWith(".log") }?.forEach { it.delete() }
         startAppLogging(context, reset = true)
+    }
+
+    private fun stamped(baseName: String): String {
+        return stampedNames.getOrPut(baseName) {
+            val dot = baseName.lastIndexOf('.')
+            if (dot > 0) {
+                "${baseName.substring(0, dot)}_$sessionStamp${baseName.substring(dot)}"
+            } else {
+                "${baseName}_$sessionStamp.log"
+            }
+        }
+    }
+
+    /** True when any run's copy of [baseName] exists, since the name now carries a timestamp. */
+    private fun anyLogExists(logsDir: File, baseName: String): Boolean {
+        val dot = baseName.lastIndexOf('.')
+        val prefix = if (dot > 0) baseName.substring(0, dot) else baseName
+        return logsDir.listFiles()?.any { it.isFile && it.name.startsWith("${prefix}_") } == true
     }
 
     // ── Tag management (settings UI surface) ──────────────────────────
@@ -375,7 +418,7 @@ object LogManager {
             return
         }
 
-        val logFile = File(getLogsDir(context), "logcat.log")
+        val logFile = File(getLogsDir(context), stamped("logcat.log"))
 
         try {
             stopLogcat()
@@ -405,14 +448,16 @@ object LogManager {
     }
 
     fun clearLogs(context: Context) {
-        getLogsDir(context).listFiles()?.forEach { it.delete() }
+        // Clean both directories
+        getLogsDir(context, true).listFiles()?.forEach { it.delete() }
+        getLogsDir(context, false).listFiles()?.forEach { it.delete() }
     }
 
     @JvmStatic
     @JvmOverloads
     fun startAppLogging(context: Context, reset: Boolean = false) {
         if (!cachedAppDebugEnabled) return
-        val logFile = File(getLogsDir(context), "application.log")
+        val logFile = File(getLogsDir(context), stamped("application.log"))
 
         try {
             stopAppLogging()
@@ -471,17 +516,23 @@ object LogManager {
 
     @JvmStatic
     fun getShareableLogFiles(context: Context): Array<File> {
-        val logsDir = getLogsDir(context)
-        return logsDir
-            .listFiles()
-            ?.filter {
-                it.isFile && (it.name.endsWith(".log") || it.name.endsWith(".txt") || it.name.endsWith(".csv"))
-            }?.toTypedArray() ?: emptyArray()
+        val filter: (File) -> Boolean = {
+            it.isFile && (it.name.endsWith(".log") || it.name.endsWith(".txt") || it.name.endsWith(".csv"))
+        }
+        // Aggregate files from both the internal and external directories
+        val external = getLogsDir(context, true).listFiles()?.filter(filter) ?: emptyList()
+        val private = getLogsDir(context, false).listFiles()?.filter(filter) ?: emptyList()
+        return (external + private).toTypedArray()
     }
 
     /** Total bytes of all shareable log files. */
     @JvmStatic
-    fun getShareableLogsSize(context: Context): Long = getShareableLogFiles(context).sumOf { it.length() }
+    fun getShareableLogsSize(context: Context): Long {
+        // Sum sizes from both internal and external directories
+        val internalSize = getLogsDir(context, false).walk().filter { it.isFile }.sumOf { it.length() }
+        val externalSize = getLogsDir(context, true).walk().filter { it.isFile }.sumOf { it.length() }
+        return internalSize + externalSize
+    }
 
     /** Deletes all shareable log files; returns the count removed. */
     @JvmStatic
@@ -576,13 +627,18 @@ object LogManager {
 
         val ctx = resolveContext(context) ?: return
         val fullMessage = if (t != null) "$message :: ${Log.getStackTraceString(t)}" else message
-        appendLine(ctx, APP_LOG_FILE, "${level.prefix}/$tag", fullMessage)
+        appendLine(ctx, stamped(APP_LOG_FILE), "${level.prefix}/$tag", fullMessage)
     }
 
     private fun appendLine(context: Context, fileName: String, level: String, message: String) {
         try {
             val now = LocalDateTime.now().format(logTimestampFormatter)
-            File(getLogsDir(context), fileName).appendText("$now $level: $message\n")
+
+            // Define high-priority files that go to External storage
+            val isExternal =  fileName.startsWith(POST_MORTEM_FILE.substringBeforeLast('.'))
+
+            val dir = getLogsDir(context, isExternal)
+            File(dir, fileName).appendText("$now $level: $message\n")
         } catch (e: Exception) {
             // Need to be Log for when baseLog and Timber doesn't work.
             Log.e(TAG, "Failed to append to $fileName: ${e.message}", e)
@@ -748,15 +804,15 @@ object LogManager {
             // Auto-reset keys when a log file no longer exists — covers manual deletion,
             // clearLogs() calls, and fresh installs without needing external management.
             val originalSize = loggedKeys.size
-            if (!File(logsDir, EXIT_REASONS_FILE).exists()) loggedKeys.removeAll { it.startsWith("exit_") }
-            if (!File(logsDir, CRASH_FILE).exists()) loggedKeys.removeAll { it.startsWith("crash_") }
+            if (!anyLogExists(logsDir, EXIT_REASONS_FILE)) loggedKeys.removeAll { it.startsWith("exit_") }
+            if (!anyLogExists(logsDir, CRASH_FILE)) loggedKeys.removeAll { it.startsWith("crash_") }
 
             var wroteSomething = (loggedKeys.size != originalSize)
 
             if (infos.isEmpty()) {
                 // Only write the "no info" placeholder if the file is missing/just cleared.
-                if (cachedExitReasonLogEnabled && !File(logsDir, EXIT_REASONS_FILE).exists()) {
-                    appendLine(ctx, EXIT_REASONS_FILE, "I/$TAG", "No historical exit info available")
+                if (cachedExitReasonLogEnabled && !anyLogExists(logsDir, EXIT_REASONS_FILE)) {
+                    appendLine(ctx, stamped(EXIT_REASONS_FILE), "I/$TAG", "No historical exit info available")
                 }
                 if (wroteSomething) persistKeys(prefs, PREF_LOGGED_EXIT_KEYS, loggedKeys)
                 return
@@ -771,12 +827,12 @@ object LogManager {
                 if (cachedExitReasonLogEnabled && exitKey !in loggedKeys) {
                     // Separator line with reason number: 0 = newest/last, larger = older
                     appendLine(
-                        ctx, EXIT_REASONS_FILE, "I/$TAG",
+                        ctx, stamped(EXIT_REASONS_FILE), "I/$TAG",
                         "\n---- Exit reason #${index} (1=new/last, ${infos.size-1}=oldest) ----"
                     )
 
                     appendLine(
-                        ctx, EXIT_REASONS_FILE, "I/$TAG",
+                        ctx, stamped(EXIT_REASONS_FILE), "I/$TAG",
                         "pid=${info.pid} reason=${info.reason}-[${getExitReasonName(info.reason)}] status=${info.status} " +
                                 "importance=${info.importance} desc=${info.description} timestamp=${timestamp}",
                     )
@@ -804,7 +860,7 @@ object LogManager {
                                 val rawTrace = input.bufferedReader().readText()
                                 val summary = extractTraceExcerpt(rawTrace, info.reason, maxFrames = 20)
                                 appendLine(
-                                    ctx, CRASH_FILE, "I/$TAG",
+                                    ctx, stamped(CRASH_FILE), "I/$TAG",
                                     "\n=== Historical $type Detected ===\n" +
                                             "PID: ${info.pid} | Timestamp: ${timestamp}\n" +
                                             "Description: ${info.description}\n" +
@@ -813,7 +869,7 @@ object LogManager {
                                 )
                             } ?: run {
                                 // If no stream is available, log what we can
-                                appendLine(ctx, CRASH_FILE, "I/$TAG", "Historical $type (No trace available) pid=${info.pid} desc=${info.description}")
+                                appendLine(ctx, stamped(CRASH_FILE), "I/$TAG", "Historical $type (No trace available) pid=${info.pid} desc=${info.description}")
                             }
                         } catch (e: Exception) {
                             logE(TAG,e, context) { "Failed to read historical trace: ${e.message}" }
@@ -885,7 +941,7 @@ object LogManager {
 
         // Auto-reset keys when the file no longer exists — covers log deletion,
         // fresh installs, and manual file removal without needing clearLogs().
-        val postMortemFile = File(getLogsDir(ctx), POST_MORTEM_FILE)
+        val postMortemFile = File(getLogsDir(ctx, true), stamped(POST_MORTEM_FILE))
         if (!postMortemFile.exists()) {
             prefs.edit { remove(PREF_POST_MORTEM_KEYS) }
         }
@@ -903,7 +959,7 @@ object LogManager {
                 val key = "pm_${exitKey(info)}"
                 if (key in loggedKeys) continue
 
-                appendLine(ctx, POST_MORTEM_FILE, "I/$TAG", buildPostMortemReport(info, ctx))
+                appendLine(ctx, stamped(POST_MORTEM_FILE), "I/$TAG", buildPostMortemReport(info, ctx))
                 loggedKeys.add(key)
                 wrote = true
             }
