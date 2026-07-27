@@ -146,73 +146,85 @@ public class XConnectorEpoll implements Runnable {
       LogManager.logW(TAG, "killConnection called with null client; reason=" + reason);
       return;
     }
-
-    // Winner of this check handles the teardown.
-    if (!client.markKillingOnce()) return;  // already being/been torn down by another thread
-
     int fd = client.clientSocket != null ? client.clientSocket.fd : -1;
     // Log immediately on entry: fd, reason, whether multithreadedClients - Commented out to avoid noise
     // LogManager.logI(TAG, "killConnection entry: fd=" + fd + " reason=\"" + reason + "\" multithreadedClients=" + multithreadedClients);
 
-    // FIX: Remove from map FIRST. This fixes:
-    // 1. Busy-spinning in shutdown() if it lost the race.
-    // 2. FD-reuse race where a new connection on the same FD could be deleted by this cleanup.
-    synchronized (connectedClients) {
-      connectedClients.remove(fd);
+    // Both the client's poll thread (on EOF) and the connector's thread (on shutdown)
+    // can call this. Only the winner performs the actual resource cleanup.
+    boolean wonRace = client.markKillingOnce();
+
+    if (wonRace) {
+      // Remove from map FIRST to avoid FD-reuse races where a new connection on
+      // the same FD could be deleted by this cleanup while it's being accepted.
+      synchronized (connectedClients) {
+        connectedClients.remove(fd);
+      }
+
+      client.connected = false;
+      connectionHandler.handleConnectionShutdown(client);
+
+      if (multithreadedClients) {
+        // Signal the poll thread to exit its native loop (if we are not that thread)
+        if (client.pollThread != null && Thread.currentThread() != client.pollThread) {
+          client.requestShutdown();
+        }
+      } else {
+        removeFdFromEpoll(epollFd, fd);
+      }
     }
 
-    client.connected = false;
-    connectionHandler.handleConnectionShutdown(client);
-    if (multithreadedClients) {
-      if (client.pollThread != null && Thread.currentThread() != client.pollThread) {
-        client.requestShutdown();
 
-        // FIX: Uninterruptible join. Proceeding after an InterruptedException
-        // would free buffers while the poll thread is potentially still alive.
-        boolean interrupted = Thread.interrupted();
-        try {
-          while (client.pollThread.isAlive()) {
-            try {
-              client.pollThread.join();
-            } catch (InterruptedException e) {
-              interrupted = true;
-            }
+    // BOTH winner and loser must join the thread to ensure it's dead before
+    // shutdown() proceeds (unless the current thread IS the poll thread).
+    if (multithreadedClients && client.pollThread != null && Thread.currentThread() != client.pollThread) {
+      // FIX: Timed join to avoid teardown hang if the poll thread is blocked
+      // behind a SIGSTOPped peer. The native socket now has SO_SNDTIMEO,
+      // so it should exit eventually. 5s grace period avoids ANRs.
+      boolean interrupted = Thread.interrupted();
+      try {
+        long timeout = 5000;
+        long start = System.currentTimeMillis();
+        while (client.pollThread.isAlive()) {
+          long remaining = timeout - (System.currentTimeMillis() - start);
+          if (remaining <= 0) {
+            LogManager.logW(TAG, "killConnection: pollThread for fd=" + fd + " did not exit; proceeding to avoid ANR.");
+            break;
           }
-        } finally {
-          if (interrupted) {
-            // Restore interrupt status and log interruption
-            Thread.currentThread().interrupt();
-            LogManager.logW(TAG,
-                    "Interrupted while joining pollThread for fd=" + fd + " reason=\"" + reason + "\"");
+          try {
+            client.pollThread.join();
+          } catch (InterruptedException e) {
+            interrupted = true;
           }
         }
-        client.pollThread = null;
+      } finally {
+        if (interrupted) {
+          // Restore interrupt status and log interruption
+          Thread.currentThread().interrupt();
+          LogManager.logW(TAG,
+                  "Interrupted while joining pollThread for fd=" + fd + " reason=\"" + reason + "\"");
+        }
       }
-      closeFd(client.shutdownFd);
+      client.pollThread = null;
     } else removeFdFromEpoll(epollFd, fd);
 
-    // Free direct byte buffers and ancillary FDs to avoid resource leak warnings
-    try {
-      client.releaseIOStreams();
-    } catch (Exception e) {
-      LogManager.logW(TAG,
-              "Exception releasing IO streams for fd=" + fd + " reason=\"" + reason + "\"",
-              e);
+    // Resource cleanup only happens once, and only after ensuring the thread is joined.
+    if (wonRace) {
+      // Free direct byte buffers and ancillary FDs to avoid resource leak warnings
+      try {
+        client.releaseIOStreams();
+      } catch (Exception e) {
+        LogManager.logW(TAG, "Exception releasing IO streams for fd=" + fd, e);
+      }
+      try {
+        client.clientSocket.closeAncillaryFds();
+      } catch (Exception e) {
+        LogManager.logW(TAG, "Exception closing ancillary FDs for fd=" + fd, e);
+      }
+      if (multithreadedClients) closeFd(client.shutdownFd);
+      closeFd(fd);
+      LogManager.log(TAG, "killConnection completed: fd=" + fd + " reason=\"" + reason + "\"");
     }
-    try {
-      client.clientSocket.closeAncillaryFds();
-    } catch (Exception e) {
-      LogManager.logW(TAG,
-              "Exception closing ancillary FDs for fd=" + fd + " reason=\"" + reason + "\"",
-              e);
-    }
-    closeFd(client.clientSocket.fd);
-    synchronized (connectedClients) {
-      connectedClients.remove(client.clientSocket.fd);
-    }
-
-    LogManager.log(TAG,
-            "killConnection completed: fd=" + fd + " reason=\"" + reason + "\"");
   }
 
   private void shutdown() {

@@ -82,6 +82,7 @@ public class SessionKeepAliveService extends Service {
     private static volatile boolean isScreenLocked = false;
     public static volatile boolean exitingFromNotification = false;
     private BroadcastReceiver screenStateReceiver;
+    private static final AtomicBoolean appInPipMode = new AtomicBoolean(false);
 
     private PowerManager.WakeLock wakeLock;
     //    private WifiManager.WifiLock wifiLock;
@@ -90,13 +91,14 @@ public class SessionKeepAliveService extends Service {
     private static final String PREF_USE_WAKELOCK = "enable_background_wakelock";
     private static final String PREF_HEARTBEAT_FREQUENCY = "background_heartbeat_frequency";
     private static long heartbeat_interval_ms = 2 * 60 * 1000L; // 2 minutes
+    private static long hb_frequency = 0;
+
+    private NotificationHelper notificationHelper;
 
     // Dedicated thread replaces Handler.postDelayed() — not subject to
     // main-looper message-queue deferral in low-power states.
     private volatile Thread heartbeatThread;
-    private volatile boolean heartbeatRunning = false;
-
-    private NotificationHelper notificationHelper;
+    private volatile AtomicBoolean heartbeatSignal;
     private int notificationId = -1;
     private static final String NOTIFICATION_ID_NAME = "winnative.keepAlive";
 
@@ -111,12 +113,12 @@ public class SessionKeepAliveService extends Service {
         if (ctx == null) return;
         prefs = PreferenceManager.getDefaultSharedPreferences(ctx.getApplicationContext());
         if (prefs != null) {
-            int frequency = prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0);
-            if (frequency > 0) {
-                if (frequency < 5)
+            hb_frequency = prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0);
+            if (hb_frequency > 0) {
+                if (hb_frequency < 5)
                     heartbeat_interval_ms = 5 * 1000L;
                 else
-                    heartbeat_interval_ms = frequency * 1000L;
+                    heartbeat_interval_ms = hb_frequency * 1000L;
             }
         }
 
@@ -208,6 +210,18 @@ public class SessionKeepAliveService extends Service {
         activeXServer = xServer;
     }
 
+    public static void setPipMode(boolean inPip) {
+        appInPipMode.set(inPip);
+        if (instance != null) {
+            instance.ensureForeground();
+            LogManager.logI(TAG, "setPipMode: " + inPip, instance);
+        }
+    }
+
+    private static boolean isInPictureInPictureMode() {
+        return appInPipMode.get();
+    }
+
     // ===================================================================
     // Store component tracking (Steam/Epic/GOG "I'm doing background work")
     // ===================================================================
@@ -237,7 +251,7 @@ public class SessionKeepAliveService extends Service {
     public static boolean isAppInBackground()  { return isAppInBackground;  }
     public static boolean isDeviceLocked()     { return isScreenLocked;      }
 
-    public static boolean isAppNotVisible() {
+        public static boolean isAppNotVisible() {
         return isAppInBackground || isScreenLocked;
     }
 
@@ -372,6 +386,9 @@ public class SessionKeepAliveService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent != null ? intent.getAction() : null;
 
+        // Reset the stopping flag as we've received a new start command (or are resuming)
+        serviceStopping = false;
+
         // Always promote to foreground first so Android does not consider
         // the start a violation (and so the notification reflects current
         // reasons), even if the command immediately tells us to stop.
@@ -410,6 +427,7 @@ public class SessionKeepAliveService extends Service {
 
         if (!hasReason()) {
             Timber.tag(TAG).d("onStartCommand found no active reason; stopping immediately");
+            serviceStopping = true;
             stopForegroundCompat();
             stopSelf();
             serviceRunning.set(false);
@@ -555,38 +573,49 @@ public class SessionKeepAliveService extends Service {
 
     private void startHeartbeat() {
         if (prefs == null) return;
-        if (heartbeatRunning || !prefs.getBoolean("enable_background_wakelock", false) || prefs.getInt(PREF_HEARTBEAT_FREQUENCY, 0) <= 0) return;
-        heartbeatRunning = true;
-        Thread t = new Thread(() -> {
-            while (heartbeatRunning && sessionActive.get() && isContainerPaused) {
+        if (heartbeatThread != null || !prefs.getBoolean("enable_background_wakelock", false) || hb_frequency <= 0) return;
+
+        synchronized (this) {
+            if (heartbeatThread != null) return;
+
+            final AtomicBoolean signal = new AtomicBoolean(true);
+            heartbeatSignal = signal;
+
+            Thread t = new Thread(() -> {
                 try {
-                    Thread.sleep(heartbeat_interval_ms);
-                    LogManager.log(TAG, "Heartbeat: Keeping container alive...", getApplicationContext());
+                    while (signal.get() && sessionActive.get() && isContainerPaused) {
+                        Thread.sleep(heartbeat_interval_ms);
+
+                        // Verify state again after waking up from sleep
+                        if (!signal.get() || !isContainerPaused) break;
+
+                        LogManager.log(TAG, "Heartbeat: Keeping container alive...", getApplicationContext());
+                        runOomSweepInternal();
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
-                    break;
                 }
-                // Only run the protection sweep while the container is
-                // actually paused — no work needed in the foreground.
-                if (!heartbeatRunning || !isContainerPaused) {
-                    break;
-                }
-                runOomSweepInternal();
-            }
-            heartbeatRunning = false;
-        }, "SessionHeartbeat");
-        t.setDaemon(true);
-        t.start();
-        heartbeatThread = t;
+            }, "SessionHeartbeat");
+            t.setDaemon(true);
+            heartbeatThread = t;
+            t.start();
+        }
     }
 
     private void stopHeartbeat() {
-        heartbeatRunning = false;
-        Thread t = heartbeatThread;
-        if (t != null) {
-            t.interrupt();
-            heartbeatThread = null;
-            LogManager.log(TAG, "Heartbeat stopped", this);
+        synchronized (this) {
+            // Signal the thread to stop its loop
+            if (heartbeatSignal != null) {
+                heartbeatSignal.set(false);
+                heartbeatSignal = null;
+            }
+
+            // Interrupt the thread if it's currently sleeping or blocked in OOM sweep
+            if (heartbeatThread != null) {
+                heartbeatThread.interrupt();
+                heartbeatThread = null;
+                LogManager.log(TAG, "Heartbeat stopped", this);
+            }
         }
     }
 
@@ -606,7 +635,10 @@ public class SessionKeepAliveService extends Service {
 
         // 1. HIGHEST PRIORITY: The game/container
         if (sessionActive.get()) {
-            return isContainerPaused ? svc.getString(R.string.fg_keep_alive_notification_content_container_paused) : svc.getString(R.string.fg_keep_alive_notification_content_container_running);
+            return (isContainerPaused
+                    && (isDeviceLocked() || !isInPictureInPictureMode()))
+                    ? svc.getString(R.string.fg_keep_alive_notification_content_container_paused)
+                    : svc.getString(R.string.fg_keep_alive_notification_content_container_running);
         }
 
         // 2. MEDIUM PRIORITY: Downloads

@@ -1138,7 +1138,6 @@ private fun BackgroundPauseModeCard(
     val options = listOf(
         Triple(ProcessHelper.BackgroundPauseMode.ALL,            R.string.settings_other_bg_pause_all_title,            R.string.settings_other_bg_pause_all_subtitle),
         Triple(ProcessHelper.BackgroundPauseMode.GAME_ONLY,      R.string.settings_other_bg_pause_game_only_title,      R.string.settings_other_bg_pause_game_only_subtitle),
-        Triple(ProcessHelper.BackgroundPauseMode.ALL_EXCEPT_GAME,R.string.settings_other_bg_pause_all_except_game_title,R.string.settings_other_bg_pause_all_except_game_subtitle),
     )
 
     Box(

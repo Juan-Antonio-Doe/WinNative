@@ -2650,19 +2650,22 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         if (externalDisplayController != null) externalDisplayController.start();
 
         SessionKeepAliveService.onResumeSession(this);
-
         LogManager.log(TAG, "Session resumed", getApplicationContext());
-        // Cancel any pending stop task and re-schedule it
-        handler.removeCallbacks(stopEventWatchTask);
-        handler.postDelayed(stopEventWatchTask, 8000);
+        if (!isInPictureInPictureMode()) {
+            // Cancel any pending stop task and re-schedule it
+            handler.removeCallbacks(stopEventWatchTask);
+            handler.postDelayed(stopEventWatchTask, 8000);
+        }
     }
 
     @Override
     public void onPause() {
-        // Cancel the scheduled stop immediately so it doesn't kill
-        // the watcher we are about to start below.
-        handler.removeCallbacks(stopEventWatchTask);
-        LogManager.startEventWatch(getApplicationContext(), "XServerDisplayActivity.onPause");
+        if (!isInPictureInPictureMode()) {
+            // Cancel the scheduled stop immediately so it doesn't kill
+            // the watcher we are about to start below.
+            handler.removeCallbacks(stopEventWatchTask);
+            LogManager.startEventWatch(getApplicationContext(), "XServerDisplayActivity.onPause");
+        }
         LogManager.log(TAG, "Session paused; entering background", getApplicationContext());
         SessionKeepAliveService.onPauseSession(this);
 
@@ -2706,6 +2709,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         }
 
         if (externalDisplayController != null) externalDisplayController.stop();
+    }
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        SessionKeepAliveService.setPipMode(isInPictureInPictureMode);
     }
 
     @Override

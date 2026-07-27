@@ -65,8 +65,7 @@ public abstract class ProcessHelper {
 
   public enum BackgroundPauseMode {
     ALL("all"),
-    GAME_ONLY("game_only"),
-    ALL_EXCEPT_GAME("all_except_game");
+    GAME_ONLY("game_only");
 
     private final String prefValue;
 
@@ -287,13 +286,6 @@ public abstract class ProcessHelper {
             suspendProcess(pid);
           } else if (PRINT_DEBUG) {
             Timber.tag(TAG).d("Skipping SIGSTOP (mode=GAME_ONLY, not game): %s", process);
-          }
-          break;
-        case ALL_EXCEPT_GAME:
-          if (isCoreProcess(normalized)) {
-            suspendProcess(pid);
-          } else if (PRINT_DEBUG) {
-            Timber.tag(TAG).d("Skipping SIGSTOP (mode=ALL_EXCEPT_GAME, is game): %s", process);
           }
           break;
         default:
