@@ -2640,7 +2640,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         handler.postDelayed(savePlaytimeRunnable, SAVE_INTERVAL_MS);
 
         if (!cleaningUp && !isPaused) {
-            if (autoPauseContainer) ProcessHelper.resumeAllWineProcesses();
+            if (autoPauseContainer) {
+                // Move heavy proc-walk to background
+                new Thread(ProcessHelper::resumeAllWineProcesses, "WineProcessResumer").start();
+            }
         }
 
         if (taskManagerPaneVisible && taskManagerTimer == null) {
@@ -2664,7 +2667,8 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             // Cancel the scheduled stop immediately so it doesn't kill
             // the watcher we are about to start below.
             handler.removeCallbacks(stopEventWatchTask);
-            LogManager.startEventWatch(getApplicationContext(), "XServerDisplayActivity.onPause");
+            // Move heavy proc-walk to background
+            new Thread(() -> LogManager.startEventWatch(getApplicationContext(), "XServerDisplayActivity.onPause"), "EventWatchStart").start();
         }
         LogManager.log(TAG, "Session paused; entering background", getApplicationContext());
         SessionKeepAliveService.onPauseSession(this);
@@ -2683,7 +2687,10 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
         boolean cleaningUp = exitRequested.get() || sessionCleanupStarted.get() || activityDestroyed.get();
 
         if (!cleaningUp && !isInPictureInPictureMode()) {
-            if (autoPauseContainer) ProcessHelper.pauseAllWineProcesses();
+            if (autoPauseContainer) {
+                // Move heavy proc-walk to background
+                new Thread(ProcessHelper::pauseAllWineProcesses, "WineProcessPauser").start();
+            }
 
             if (environment != null) {
                 environment.onPause();
@@ -6770,6 +6777,12 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
                 winHandler.markSessionInitialized();
 
                 this.guestProgramLauncherComponent = environment.getComponent(GuestProgramLauncherComponent.class);
+
+                // Recovery sweep: ensure everything is resumed and protected after re-attaching.
+                // This prevents a frozen guest if the app was killed while the container was paused.
+                ProcessHelper.resumeAllWineProcesses();
+                ProcessHelper.protectAllWineProcesses();
+
                 return;
             }
         }

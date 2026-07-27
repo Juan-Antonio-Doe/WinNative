@@ -189,7 +189,7 @@ public class SessionKeepAliveService extends Service {
                 env.stopEnvironmentComponents();
             } catch (Exception e) {
 //                Timber.tag(TAG).e(e, "Failed to stop environment components during session stop");
-                LogManager.logE(TAG, "Failed to stop environment components during session stop", e, instance.getApplicationContext());
+                LogManager.logE(TAG, "Failed to stop environment components during session stop", e);
             }
         }, "XServerTeardown").start();
     }
@@ -286,7 +286,12 @@ public class SessionKeepAliveService extends Service {
     // ===================================================================
 
     private static boolean hasReason() {
-        return sessionActive.get() || !activeDownloads.isEmpty() || !activeComponents.isEmpty() ||
+        boolean hasDownload;
+        synchronized (activeDownloads) {
+            hasDownload = !activeDownloads.isEmpty();
+        }
+
+        return sessionActive.get() || hasDownload || !activeComponents.isEmpty() ||
                 (isAppNotVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit());
     }
 
