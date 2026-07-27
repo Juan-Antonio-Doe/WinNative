@@ -96,6 +96,12 @@ class SteamLoginActivity : FixedFontScaleComponentActivity() {
         }
     }
 
+    override fun onDestroy() {
+        // Manually unregister to stop the service immediately
+        SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM)
+        super.onDestroy()
+    }
+
     // Root
     @Composable
     fun LoginContent(viewModel: SteamLoginViewModel) {

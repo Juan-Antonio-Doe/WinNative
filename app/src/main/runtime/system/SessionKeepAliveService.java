@@ -102,7 +102,8 @@ public class SessionKeepAliveService extends Service {
     private int notificationId = -1;
     private static final String NOTIFICATION_ID_NAME = "winnative.keepAlive";
 
-    // Tracks active components and their notification messages
+    // Tracks active components and their notification messages.
+    // We use a synchronized WeakHashMap for the inner map to prevent Context/Activity leaks.
     private static final Map<String, Map<Object, String>> activeComponents = new ConcurrentHashMap<>();
 
     // ===================================================================
@@ -228,7 +229,14 @@ public class SessionKeepAliveService extends Service {
 
     public static void startComponent(Context ctx, String componentName, String message) {
         if (ctx == null || componentName == null) return;
-        Map<Object, String> owners = activeComponents.computeIfAbsent(componentName, k -> new ConcurrentHashMap<>());
+
+        // Use a synchronized WeakHashMap to ensure Contexts aren't pinned in memory
+        Map<Object, String> owners = activeComponents.get(componentName);
+        if (owners == null) {
+            owners = java.util.Collections.synchronizedMap(new java.util.WeakHashMap<>());
+            activeComponents.put(componentName, owners);
+        }
+
         owners.put(ctx, message != null ? message : "");
         LogManager.log(TAG, "startComponent: " + componentName, ctx);
         updateForegroundState(ctx);
@@ -291,8 +299,15 @@ public class SessionKeepAliveService extends Service {
             hasDownload = !activeDownloads.isEmpty();
         }
 
-        return sessionActive.get() || hasDownload || !activeComponents.isEmpty() ||
+        return sessionActive.get() || hasDownload || hasActiveComponent() ||
                 (isAppNotVisible() && PrefManager.INSTANCE.getChatStayRunningOnExit());
+    }
+
+    private static boolean hasActiveComponent() {
+        for (Map<Object, String> owners : activeComponents.values()) {
+            if (!owners.isEmpty()) return true;
+        }
+        return false;
     }
 
     // Single chokepoint for every caller (session, components, downloads).
@@ -656,8 +671,14 @@ public class SessionKeepAliveService extends Service {
             return svc.getString(R.string.fg_keep_alive_notification_content_steam_chat_running);
 
         // 4. LOW PRIORITY: Active store services
-        // Fix: Copy keys first to avoid IndexOutOfBoundsException if map is cleared between check and access
-        List<String> names = new ArrayList<>(activeComponents.keySet());
+        // Filter out keys that might have been cleared by Garbage Collection
+        List<String> names = new ArrayList<>();
+        for (Map.Entry<String, Map<Object, String>> entry : activeComponents.entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                names.add(entry.getKey());
+            }
+        }
+
         if (!activeComponents.isEmpty()) {
             // Define the priority order
             List<String> priority = Arrays.asList(COMPONENT_STEAM, COMPONENT_EPIC, COMPONENT_GOG);
