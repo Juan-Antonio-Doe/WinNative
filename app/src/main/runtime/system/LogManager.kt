@@ -828,7 +828,7 @@ object LogManager {
                     // Separator line with reason number: 0 = newest/last, larger = older
                     appendLine(
                         ctx, stamped(EXIT_REASONS_FILE), "I/$TAG",
-                        "\n---- Exit reason #${index} (1=new/last, ${infos.size-1}=oldest) ----"
+                        "\n---- Exit reason #${index} (0=oldest, ${infos.size-1}=new/last) ----"
                     )
 
                     appendLine(
@@ -941,8 +941,7 @@ object LogManager {
 
         // Auto-reset keys when the file no longer exists — covers log deletion,
         // fresh installs, and manual file removal without needing clearLogs().
-        val postMortemFile = File(getLogsDir(ctx, true), stamped(POST_MORTEM_FILE))
-        if (!postMortemFile.exists()) {
+        if (!anyLogExists(getLogsDir(ctx, true), POST_MORTEM_FILE)) {
             prefs.edit { remove(PREF_POST_MORTEM_KEYS) }
         }
 
