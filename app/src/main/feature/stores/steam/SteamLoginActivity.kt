@@ -1,6 +1,7 @@
 package com.winlator.cmod.feature.stores.steam
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
+import androidx.activity.viewModels
 import androidx.activity.compose.setContent
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -45,6 +46,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.winlator.cmod.R
 import com.winlator.cmod.feature.stores.steam.enums.LoginResult
 import com.winlator.cmod.feature.stores.steam.enums.LoginScreen
+import com.winlator.cmod.feature.stores.steam.service.SteamService
 import com.winlator.cmod.feature.stores.steam.ui.SteamLoginViewModel
 import com.winlator.cmod.feature.stores.steam.ui.components.QrCodeImage
 import com.winlator.cmod.feature.stores.steam.ui.data.UserLoginState
@@ -65,6 +67,9 @@ private val TextSecondary = Color(0xFF7A8FA8)
 private val DangerRed = Color(0xFFFF7A88)
 
 class SteamLoginActivity : FixedFontScaleComponentActivity() {
+
+    private val viewModel: SteamLoginViewModel by viewModels()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -90,15 +95,22 @@ class SteamLoginActivity : FixedFontScaleComponentActivity() {
                         outline = CardBorder,
                     ),
             ) {
-                val viewModel: SteamLoginViewModel = viewModel()
                 LoginContent(viewModel)
             }
         }
     }
 
     override fun onDestroy() {
-        // Manually unregister to stop the service immediately
+        // Manually unregister this service as reason.
         SessionKeepAliveService.stopComponent(this, SessionKeepAliveService.COMPONENT_STEAM)
+
+        // Stop the background SteamService if we are leaving the login screen
+        // without a successful login. This removes the "Steam service active" reason.
+        val state = viewModel.loginState.value
+        if (state.loginResult != LoginResult.Success) {
+            SteamService.Companion.stop()
+        }
+
         super.onDestroy()
     }
 
@@ -123,6 +135,11 @@ class SteamLoginActivity : FixedFontScaleComponentActivity() {
         LaunchedEffect(Unit) { entered = true }
 
         val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+
+        // Ensure the system Back button finishes the activity properly
+        BackHandler {
+            finish()
+        }
 
         Box(
             modifier =
