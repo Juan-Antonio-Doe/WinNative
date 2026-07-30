@@ -259,7 +259,7 @@ public class SessionKeepAliveService extends Service {
     public static boolean isAppInBackground()  { return isAppInBackground;  }
     public static boolean isDeviceLocked()     { return isScreenLocked;      }
 
-        public static boolean isAppNotVisible() {
+    public static boolean isAppNotVisible() {
         return isAppInBackground || isScreenLocked;
     }
 
@@ -544,7 +544,7 @@ public class SessionKeepAliveService extends Service {
         serviceStopping = false;
         serviceRunning.set(false);
 
-        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+//        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
 //        if (wifiLock != null && wifiLock.isHeld()) wifiLock.release();
         stopHeartbeat();
         releaseWakeLock();
