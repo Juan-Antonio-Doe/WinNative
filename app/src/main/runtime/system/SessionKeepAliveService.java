@@ -139,7 +139,7 @@ public class SessionKeepAliveService extends Service {
         isContainerPaused = true;
         LogManager.log(TAG, "onPauseSession", ctx);
         if (instance != null) {
-            instance.acquireWakeLock();
+//            instance.acquireWakeLock();       // Moved to onCreate > screenStateReceiver > Screen off event
             instance.startHeartbeat();
         }
         updateForegroundState(ctx);
@@ -164,7 +164,6 @@ public class SessionKeepAliveService extends Service {
         if (ctx == null) return;
         if (!sessionActive.compareAndSet(true, false)) return;
         isContainerPaused = false;
-//        LogManager.log(ctx, TAG, "stopSession");
         if (instance != null) {
             instance.stopHeartbeat();
             instance.releaseWakeLock();
@@ -189,7 +188,6 @@ public class SessionKeepAliveService extends Service {
             try {
                 env.stopEnvironmentComponents();
             } catch (Exception e) {
-//                Timber.tag(TAG).e(e, "Failed to stop environment components during session stop");
                 LogManager.logE(TAG, "Failed to stop environment components during session stop", e);
             }
         }, "XServerTeardown").start();
@@ -382,9 +380,11 @@ public class SessionKeepAliveService extends Service {
                 String action = intent.getAction();
                 if (Intent.ACTION_SCREEN_OFF.equals(action)) {
                     isScreenLocked = true;
+                    acquireWakeLock();
                     LogManager.log(TAG, "Screen turned off / device locked");
                 } else if (Intent.ACTION_USER_PRESENT.equals(action)) {
                     isScreenLocked = false;
+                    releaseWakeLock();
                     LogManager.log(TAG, "Device unlocked (user present)");
                 } else if (Intent.ACTION_SCREEN_ON.equals(action)) {
                     // Screen on but keyguard may still be showing.
