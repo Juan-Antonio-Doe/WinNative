@@ -2653,8 +2653,11 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
 
         if (!cleaningUp && !isPaused) {
             if (autoPauseContainer) {
-                // Move heavy proc-walk to background
-                new Thread(ProcessHelper::resumeAllWineProcesses, "WineProcessResumer").start();
+                // Move heavy proc-walk to background thread
+                new Thread(() -> {
+                    ProcessHelper.resumeAllWineProcesses();
+                    runOnUiThread(this::applyScreenEffects);
+                }, "WineProcessResumer").start();
             }
         }
 
