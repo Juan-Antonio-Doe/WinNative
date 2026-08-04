@@ -82,7 +82,7 @@ public abstract class ProcessHelper {
   }
 
   private static volatile BackgroundPauseMode backgroundPauseMode = BackgroundPauseMode.GAME_ONLY;
-  private static volatile int registeredGamePid = -1;
+  private static volatile boolean areProcessesPaused = false;
   private static final String OOM_TAG = "OomProtectCheck";
 
   public static native int reapDeadChildrenNow();
@@ -292,6 +292,7 @@ public abstract class ProcessHelper {
           break;
       }
     }
+    areProcessesPaused = true;
   }
 
   public static void resumeAllWineProcesses() {
@@ -302,6 +303,7 @@ public abstract class ProcessHelper {
       resumeProcess(pid);
       setOomScoreAdj(pid, OOM_SCORE_ADJ_DEFAULT);
     }
+    areProcessesPaused = false;
   }
 
   public static int exec(String command) {
@@ -730,15 +732,7 @@ public abstract class ProcessHelper {
     return backgroundPauseMode;
   }
 
-  public static void registerGamePid(int pid) {
-    registeredGamePid = pid;
-    LogManager.log(TAG, "Registered game process PID: " + pid);
-  }
-
-  public static void unregisterGamePid() {
-    LogManager.log(TAG, "Unregistered game process PID (was: " + registeredGamePid + ")");
-    registeredGamePid = -1;
-  }
+  public static boolean areProcessesPaused() { return areProcessesPaused; }
 
   private static String readProcFile(String path) {
     try {

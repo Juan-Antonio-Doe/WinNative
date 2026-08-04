@@ -655,7 +655,8 @@ public class SessionKeepAliveService extends Service {
 
         // 1. HIGHEST PRIORITY: The game/container
         if (sessionActive.get()) {
-            return (isContainerPaused
+            boolean isReallyPaused = isContainerPaused && ProcessHelper.areProcessesPaused();
+            return (isReallyPaused
                     && (isDeviceLocked() || !isInPictureInPictureMode()))
                     ? svc.getString(R.string.fg_keep_alive_notification_content_container_paused)
                     : svc.getString(R.string.fg_keep_alive_notification_content_container_running);
