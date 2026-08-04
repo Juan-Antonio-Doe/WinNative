@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Log;
 import com.winlator.cmod.runtime.display.connector.UnixSocketConfig;
 import com.winlator.cmod.runtime.display.environment.EnvironmentComponent;
+import com.winlator.cmod.runtime.system.LogManager;
 import com.winlator.cmod.runtime.system.ProcessHelper;
 import com.winlator.cmod.runtime.wine.EnvVars;
 import com.winlator.cmod.shared.io.FileUtils;
@@ -176,7 +177,9 @@ public class PulseAudioComponent extends EnvironmentComponent {
   @Override
   public void start() {
     synchronized (lock) {
-      if (!isServerRunning()) {
+      // If server is not responding, only kill/restart if the process is also gone
+      // or if we really want to force a fresh start.
+      if (!isServerRunning() && !isDaemonAlive()) {
         killAllPulseAudioProcesses();
         startPulseAudio();
         isPaused = false;
@@ -205,11 +208,13 @@ public class PulseAudioComponent extends EnvironmentComponent {
   public void resume() {
     synchronized (lock) {
       if (isPaused) {
-        if (isServerRunning()) {
+        // Check if server is responding OR at least the process is still alive
+        if (isServerRunning() || isDaemonAlive()) {
           isPaused = false;
           updateSink(false);
         } else {
           // Daemon died while backgrounded; relaunch it. default.pa re-creates the sink.
+          // Only restart if the daemon is truly gone
           start();
         }
       }
@@ -223,6 +228,16 @@ public class PulseAudioComponent extends EnvironmentComponent {
 
   private void updateSink(boolean suspend) {
     execPactlCommand("suspend-sink " + SINK_NAME + " " + (suspend ? "true" : "false"));
+  }
+
+  private boolean isDaemonAlive() {
+    File proc = new File("/proc");
+    String[] allPids = proc.list((dir, name) -> new File(dir, name).isDirectory() && name.matches("[0-9]+"));
+    if (allPids == null) return false;
+    for (String pidStr : allPids) {
+      if (readProcCmdline(pidStr).contains("libpulseaudio.so")) return true;
+    }
+    return false;
   }
 
   private void killAllPulseAudioProcesses() {
