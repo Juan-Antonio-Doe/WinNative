@@ -379,7 +379,7 @@ public class SessionKeepAliveService extends Service {
         // thread, so a synchronous WakeLock Binder call to a contended system_server
         // can never delay the broadcast past the ANR timeout. Also serializes
         // SCREEN_OFF / USER_PRESENT / SCREEN_ON handling in arrival order.
-        screenReceiverThread = new HandlerThread("NotificationService-ScreenReceiver");
+        screenReceiverThread = new HandlerThread("SessionKeepAlive-ScreenReceiver");
         screenReceiverThread.start();
         screenReceiverHandler = new Handler(screenReceiverThread.getLooper());
 
