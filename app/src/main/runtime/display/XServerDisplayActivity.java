@@ -2234,7 +2234,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
     private String mapCustomExecutableWinPath(String customGameFolder, @NonNull File exeFile) {
         if (container != null && customGameFolder != null && !customGameFolder.isEmpty()) {
             String mappedPath =
-                    WineUtils.getDriveCGameWindowsPath(
+                    WineUtils.resolveGameExeWindowsPath(
                             container, "CUSTOM", customGameFolder, exeFile.getAbsolutePath());
             if (mappedPath != null && !mappedPath.isEmpty()) {
                 return mappedPath;
@@ -6901,8 +6901,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity {
             normalizeSyncEnvVars(envVars);
 
             ArrayList<String> bindingPaths = new ArrayList<>();
-            String drives = WineUtils.readDrivesFromPrefix(container);
-            if (drives.isEmpty()) drives = container.getDrives();
+            String drives = WineUtils.resolveEffectiveDrives(container);
             for (String[] drive : Container.drivesIterator(drives)) {
                 bindingPaths.add(drive[1]);
             }

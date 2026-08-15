@@ -1315,13 +1315,12 @@ class UnifiedActivity :
         val windowsPath =
             container?.let {
                 com.winlator.cmod.runtime.wine.WineUtils
-                    .getDriveCGameWindowsPath(
+                    .resolveGameExeWindowsPath(
                         it,
                         "CUSTOM",
                         gameInstallPath,
                         exeFile.absolutePath,
-                    ) ?: com.winlator.cmod.runtime.wine.WineUtils
-                    .getWindowsPath(it, exeFile.absolutePath)
+                    )
             } ?: run {
                 com.winlator.cmod.runtime.wine.WineUtils.getDosPath(exeFile.absolutePath)
             }
