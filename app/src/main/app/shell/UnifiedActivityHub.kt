@@ -306,6 +306,7 @@ internal fun UnifiedActivity.UnifiedHub() {
     }
     var immersiveMode by remember { mutableStateOf(PrefManager.libraryImmersiveMode) }
     var immersiveBlur by remember { mutableStateOf(PrefManager.libraryImmersiveBlur) }
+    var forceLandscape by remember { mutableStateOf(PrefManager.libraryForceLandscape) }
     val tabs = remember(storeVisible.toMap()) { buildTabs(storeVisible) }
     var selectedIdx by rememberSaveable { mutableIntStateOf(0) }
     var selectedDownloadId by remember { mutableStateOf<String?>(null) }
@@ -682,6 +683,7 @@ internal fun UnifiedActivity.UnifiedHub() {
                 libraryLayoutMode = libraryLayoutMode,
                 immersiveMode = immersiveMode,
                 immersiveBlur = immersiveBlur,
+                forceLandscape = forceLandscape,
                 onLibraryLayoutSelected = {
                     libraryLayoutMode = it
                     PrefManager.libraryLayoutMode = it.name
@@ -701,6 +703,10 @@ internal fun UnifiedActivity.UnifiedHub() {
                 onImmersiveBlurChanged = {
                     immersiveBlur = it
                     PrefManager.libraryImmersiveBlur = it
+                },
+                onForceLandscapeChanged = {
+                    forceLandscape = it
+                    com.winlator.cmod.shared.android.OrientationLock.forceLandscape = it
                 },
                 onExportAll = {
                     scope.launch {
@@ -1913,11 +1919,13 @@ internal fun UnifiedActivity.LibraryCarousel(
                                         .ifBlank { shortcut.name }
 
                                 val uuid = shortcut.getExtra("uuid")
-                                val customId = if (uuid.isNotEmpty()) {
-                                    -(uuid.hashCode().and(0x7FFFFFFF) + 1)
-                                } else {
-                                    -(displayName.hashCode().and(0x7FFFFFFF) + 1)
-                                }
+                                val identity =
+                                    if (uuid.isNotEmpty()) {
+                                        uuid
+                                    } else {
+                                        shortcut.file?.absolutePath ?: displayName
+                                    }
+                                val customId = -(identity.hashCode().and(0x7FFFFFFF) + 1)
 
                                 com.winlator.cmod.feature.retro.RetroSystems
                                     .fromId(
@@ -2010,7 +2018,7 @@ internal fun UnifiedActivity.LibraryCarousel(
                         gameDir = gog.installPath,
                     )
                 }
-            val merged = steamInstalled + customApps + mappedEpic + mappedGog
+            val merged = (steamInstalled + customApps + mappedEpic + mappedGog).distinctBy { it.id }
             val sorted =
                 merged.sortedByDescending { app ->
                     val searchKey =

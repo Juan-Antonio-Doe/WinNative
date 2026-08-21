@@ -349,11 +349,13 @@ internal fun UnifiedActivity.DrawerContent(
     libraryLayoutMode: LibraryLayoutMode,
     immersiveMode: Boolean,
     immersiveBlur: Boolean,
+    forceLandscape: Boolean,
     onLibraryLayoutSelected: (LibraryLayoutMode) -> Unit,
     onStoreVisibleChanged: (String, Boolean) -> Unit,
     onContentFiltersChanged: (String, Boolean) -> Unit,
     onImmersiveModeChanged: (Boolean) -> Unit,
     onImmersiveBlurChanged: (Boolean) -> Unit,
+    onForceLandscapeChanged: (Boolean) -> Unit,
     onExportAll: () -> Unit,
     onExitApp: () -> Unit,
 ) {
@@ -380,6 +382,15 @@ internal fun UnifiedActivity.DrawerContent(
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
         ) {
+
+            DrawerSwitchCard(
+                label = stringResource(R.string.library_games_force_landscape),
+                description = stringResource(R.string.library_games_force_landscape_description),
+                checked = forceLandscape,
+                onCheckedChange = onForceLandscapeChanged,
+            )
+
+            Spacer(Modifier.height(16.dp))
 
             // ── Layouts ──
             Text(
@@ -845,14 +856,17 @@ internal fun UnifiedActivity.AddCustomGameDialog(onDismiss: () -> Unit) {
             } else {
                 LibraryShortcutUtils.detectCustomGameFolder(path)
             }
-        // Auto-generate a game name from the EXE name (without extension)
         if (gameName.isBlank()) {
             gameName =
-                java.io
-                    .File(path)
-                    .nameWithoutExtension
-                    .replace("_", " ")
-                    .replace("-", " ")
+                if (detectedRetro != null) {
+                    java.io
+                        .File(path)
+                        .nameWithoutExtension
+                        .replace("_", " ")
+                        .replace("-", " ")
+                } else {
+                    LibraryShortcutUtils.suggestCustomGameName(path)
+                }
         }
     }
 
