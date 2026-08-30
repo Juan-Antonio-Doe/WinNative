@@ -37,6 +37,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ArrowCircleDown
 import androidx.compose.material.icons.outlined.Autorenew
 import androidx.compose.material.icons.outlined.BatteryAlert
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.KeyboardArrowDown
@@ -119,6 +120,7 @@ private val Error = Color(0xFFFF4444)
 // State
 data class OtherSettingsState(
     val checkForUpdates: Boolean = true,
+    val updateChannelIndex: Int = 0,
     val languageLabels: List<String> = emptyList(),
     val languageIndex: Int = 0,
     val soundFontFiles: List<String> = emptyList(),
@@ -166,6 +168,7 @@ fun OtherSettingsScreen(
     state: OtherSettingsState,
     onCheckForUpdatesChanged: (Boolean) -> Unit,
     onCheckForUpdatesNow: () -> Unit,
+    onUpdateChannelSelected: (Int) -> Unit,
     onLanguageSelected: (Int) -> Unit,
     onSoundFontSelected: (Int) -> Unit,
     onInstallSoundFont: () -> Unit,
@@ -232,6 +235,19 @@ fun OtherSettingsScreen(
                 checked = state.checkForUpdates,
                 onCheckedChange = onCheckForUpdatesChanged,
                 onCheckNow = onCheckForUpdatesNow,
+            )
+
+            SettingsDropdownCard(
+                title = stringResource(R.string.settings_general_update_channel),
+                subtitle = stringResource(R.string.settings_general_update_channel_summary),
+                icon = Icons.Outlined.Sync,
+                options =
+                    listOf(
+                        stringResource(R.string.update_channel_official),
+                        stringResource(R.string.update_channel_development),
+                    ),
+                selectedIndex = state.updateChannelIndex,
+                onOptionSelected = onUpdateChannelSelected,
             )
 
             SettingsDropdownCard(
