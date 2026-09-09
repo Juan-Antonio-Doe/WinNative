@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -274,7 +275,7 @@ public abstract class ProcessHelper {
       // Check if this is a core infrastructure process
       String statData = readProcStat(proc, process);
       String cmdlineData = readProcCmdline(proc, process);
-      String normalized = (statData + " " + cmdlineData).toLowerCase();
+      String normalized = (statData + " " + cmdlineData).toLowerCase(Locale.ROOT);
 
       // Check which option the user has selected to pause processes
       switch (backgroundPauseMode) {
@@ -646,7 +647,7 @@ public abstract class ProcessHelper {
     for (String pid : allPids) {
       String statData = readProcStat(proc, pid);
       String cmdlineData = readProcCmdline(proc, pid);
-      String normalized = (statData + " " + cmdlineData).toLowerCase();
+      String normalized = (statData + " " + cmdlineData).toLowerCase(Locale.ROOT);
       if (isSessionProcess(normalized) && !filteredPids.contains(pid)) filteredPids.add(pid);
     }
     return filteredPids;
@@ -667,7 +668,7 @@ public abstract class ProcessHelper {
     for (String pid : allPids) {
       String statData = readProcStat(proc, pid);
       String cmdlineData = readProcCmdline(proc, pid);
-      String normalized = (statData + " " + cmdlineData).toLowerCase();
+      String normalized = (statData + " " + cmdlineData).toLowerCase(Locale.ROOT);
       if (!isSessionProcess(normalized)) continue;
 
       String name = getStatProcessName(statData);
