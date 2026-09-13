@@ -68,7 +68,7 @@ object CloudSyncManager {
     private const val STORE_STEAM = "Steam"
     private const val STORE_EPIC = "Epic"
     private const val STORE_GOG = "GOG"
-    private const val STORE_ITCH = "Itch"
+    private const val STORE_ITCH = "Itch.io"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val syncMutex = Mutex()
