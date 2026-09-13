@@ -9734,14 +9734,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity
     @Override
     public boolean dispatchTouchEvent(MotionEvent event) {
         handleDrawerEdgeSwipe(event);
-
-        // Drop paused input after the drawer edge-swipe check to avoid ANRs.
-        if (isInputSuspended() && (drawerStateHolder == null ||
-                (!drawerStateHolder.isDrawerOpen() && !drawerStateHolder.isPaneOpen()))) {
-
-            return true;
-        }
-
         return super.dispatchTouchEvent(event);
     }
 
@@ -9842,11 +9834,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity
             }
             return true;
         }
-        if (isInputSuspended() && (drawerStateHolder == null ||
-                (!drawerStateHolder.isDrawerOpen() && !drawerStateHolder.isPaneOpen()))) {
-
-            return true;
-        }
 
         boolean handledByWinHandler = false;
         boolean handledByTouchpadView = false;
@@ -9934,7 +9921,6 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity
             }
             return true;
         }
-        if (isInputSuspended()) return super.dispatchKeyEvent(event);
         if (ExternalController.isGameController(event.getDevice())) {
             cancelMousePointerTimeout();
             if (touchpadView != null) {
