@@ -113,6 +113,7 @@ public class WinHandler {
   private int fallbackSlot = -1;
   private ExternalController currentController;
   private final GamepadState outputGamepadState = new GamepadState();
+  private final GamepadState idleGamepadState = new GamepadState();
   private int lastGamepadSource = 0;
   private float smoothedGyroX = 0.0f;
   private float smoothedGyroY = 0.0f;
@@ -678,6 +679,38 @@ public class WinHandler {
     if (xServer != null && xServer.getRenderer() != null) xServer.getRenderer().requestRenderCoalesced(VulkanRenderer.WAKE_WINHANDLER);
   }
 
+  public void representVirtualGamepad() {
+    Integer slot = this.deviceToSlot.get(OSC_DEVICE_ID);
+    if (slot == null || slot < 0 || slot >= MAX_CONTROLLERS) {
+      return;
+    }
+    if (this.writers[slot] != null) {
+      this.writers[slot].destroy();
+      this.writers[slot] = null;
+    }
+    ensureWriterForSlot(slot);
+    if (this.writers[slot] != null) {
+      this.writers[slot].requestFullResend();
+      Log.d("WinHandler", "Re-presented virtual gamepad on slot " + slot + ".");
+    }
+  }
+
+  public void resyncGamepadState() {
+    for (int i = 0; i < MAX_CONTROLLERS; i++) {
+      if (this.writers[i] != null) this.writers[i].requestFullResend();
+    }
+    if (this.lastGamepadSource == GAMEPAD_SOURCE_CONTROLLER && this.currentController != null) {
+      writeControllerGamepadState(
+          this.currentController,
+          shouldApplyGyroToTarget(GAMEPAD_SOURCE_CONTROLLER, this.currentController));
+    } else {
+      writeVirtualGamepadState(shouldApplyGyroToTarget(GAMEPAD_SOURCE_VIRTUAL, null));
+    }
+    XServer xServer = activity.getXServer();
+    if (xServer != null && xServer.getRenderer() != null)
+      xServer.getRenderer().requestRenderCoalesced(VulkanRenderer.WAKE_WINHANDLER);
+  }
+
   public boolean canUseScreenTouchStick() {
     ControlsProfile profile = this.activity.getInputControlsView().getProfile();
     return profile != null && profile.isVirtualGamepad();
@@ -727,7 +760,7 @@ public class WinHandler {
     if (binding == null || !binding.isGamepad()) return;
     ControlsProfile profile = this.activity.getInputControlsView().getProfile();
     if (profile == null || !profile.isVirtualGamepad()) return;
-    this.activity.getInputControlsView().handleInputEvent(null, binding, pressed, 0f, false);
+    this.activity.getInputControlsView().handleGestureInputEvent(binding, pressed);
     setLastGamepadSource(GAMEPAD_SOURCE_VIRTUAL, null);
     writeVirtualGamepadState(shouldApplyGyroToTarget(GAMEPAD_SOURCE_VIRTUAL, null), true);
     XServer xServer = activity.getXServer();
@@ -751,7 +784,15 @@ public class WinHandler {
         return;
       }
     }
-    releaseSlot(-1);
+    Integer virtualSlot = this.deviceToSlot.get(OSC_DEVICE_ID);
+    if (virtualSlot == null || virtualSlot < 0 || this.writers[virtualSlot] == null) {
+      return;
+    }
+    clearGamepadState(this.idleGamepadState);
+    try {
+      this.writers[virtualSlot].writeGamepadState(this.idleGamepadState);
+    } catch (IOException ignored) {
+    }
   }
 
   public void sendGamepadState(ExternalController controller) {

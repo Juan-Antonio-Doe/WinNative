@@ -7214,6 +7214,13 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity
         else if (!hasFocus) {
             releasePointerCapture();
         }
+
+        if (!hasFocus) {
+            if (touchpadView != null) touchpadView.resetInputState();
+            if (inputControlsView != null) inputControlsView.cancelActiveTouches();
+        } else if (winHandler != null) {
+            winHandler.resyncGamepadState();
+        }
     }
 
     @Override
@@ -9471,6 +9478,7 @@ public class XServerDisplayActivity extends FixedFontScaleAppCompatActivity
 
         inputControlsView.invalidate();
         if (winHandler != null) {
+            winHandler.representVirtualGamepad();
             winHandler.sendGamepadState();
         }
         startTouchscreenTimeout();
