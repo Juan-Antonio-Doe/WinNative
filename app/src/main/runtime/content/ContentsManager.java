@@ -7,10 +7,15 @@ import android.content.SharedPreferences;
 import android.net.Uri;
 import android.util.Log;
 import androidx.annotation.NonNull;
+
+import com.winlator.cmod.runtime.system.LogManager;
 import com.winlator.cmod.shared.io.FileUtils;
 import com.winlator.cmod.shared.io.TarCompressorUtils;
 import com.winlator.cmod.shared.util.OnExtractFileListener;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -22,8 +27,11 @@ import java.util.Map;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
+import java.io.RandomAccessFile;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ContentsManager {
+  private static final String TAG = "ContentsManager";
   public static final String PROFILE_NAME = "profile.json";
   public static final String REMOTE_PROFILES =
       "https://raw.githubusercontent.com/nicholasx417/WinNative-Components/refs/heads/main/contents.json";
@@ -96,6 +104,14 @@ public class ContentsManager {
   private HashMap<ContentProfile.ContentType, List<ContentProfile>> profilesMap;
 
   private ArrayList<ContentProfile> remoteProfiles;
+
+  // ELF constants: a FEX unixlib runs natively inside an arm64ec Wine, so it must be aarch64.
+  private static final int ET_DYN = 3;
+  private static final int EM_AARCH64 = 183;
+  private static final int MAX_SCAN_DEPTH = 6;
+
+  // Keyed by install dir path; cleared whenever content is installed or removed.
+  private static final Map<String, Boolean> unixLibsCache = new ConcurrentHashMap<>();
 
   public ContentsManager(Context context) {
     this.context = context;
@@ -384,6 +400,7 @@ public class ContentsManager {
 
     repairInstalledContentPermissions(profile);
     com.winlator.cmod.runtime.display.wayland.WineWaylandSupport.invalidate();
+    unixLibsCache.clear();
     callback.onSucceed(profile);
   }
 
@@ -648,6 +665,7 @@ public class ContentsManager {
   }
 
   public void removeContent(ContentProfile profile) {
+    unixLibsCache.clear();
     FileUtils.delete(getInstallDir(context, profile));
     forgetRemoteProfileAliases(profile);
     syncContents();
@@ -788,13 +806,152 @@ public class ContentsManager {
   }
 
   public boolean profileHasUnixLibs(ContentProfile profile) {
-    if (profile == null) return false;
-    return dirContainsSharedObject(getInstallDir(context, profile));
+    return profile != null && hasUnixLibs(getInstallDir(context, profile));
+  }
+
+  /** True if the package ships at least one aarch64 ELF shared object (a Wine unixlib). */
+  public static boolean hasUnixLibs(File installDir) {
+    if (installDir == null || !installDir.isDirectory()) return false;
+    return unixLibsCache.computeIfAbsent(
+            "pkg|" + installDir.getAbsolutePath(), k -> dirContainsAarch64SharedObject(installDir, 0));
+  }
+
+  /** True if the Wine/Proton build's unix-side ntdll contains the FEX unixlib loader. */
+  public static boolean wineHasUnixLibLoader(File installDir) {
+    if (installDir == null || !installDir.isDirectory()) return false;
+    return unixLibsCache.computeIfAbsent(
+            "wine|" + installDir.getAbsolutePath(),
+            k -> {
+              File unixDir = findDirNamed(installDir, "aarch64-unix", 0);
+              return unixDir != null
+                      && fileContainsAnyMarker(new File(unixDir, "ntdll.so"), UNIXLIB_LOADER_MARKERS);
+            });
   }
 
   public boolean fexcoreVersionHasUnixLibs(String fexcoreVersion) {
-    if (fexcoreVersion == null || fexcoreVersion.isEmpty()) return false;
-    return profileHasUnixLibs(getProfileByEntryName("fexcore-" + fexcoreVersion));
+    if (fexcoreVersion == null || fexcoreVersion.isEmpty()) {
+      LogManager.logW(TAG, "FEXCore version is null or empty.");
+      return false;
+    }
+    if (hasUnixLibs(findInstalledDir(context, ContentProfile.ContentType.CONTENT_TYPE_FEXCORE, fexcoreVersion)))
+      return true;
+    else {
+      LogManager.logW(TAG, "no FEXCore profile for '" + fexcoreVersion + "'");
+      return false;
+    }
+  }
+
+  // Strings only present in a Wine build that carries the FEX unixlib loader patch.
+  // Placeholder values taken from the release notes; replace with what the binary diff shows.
+  private static final byte[][] UNIXLIB_LOADER_MARKERS = {
+          "load_unixlib_by_name".getBytes(StandardCharsets.US_ASCII),
+          "MemoryWineLoadUnixLibByName".getBytes(StandardCharsets.US_ASCII)
+  };
+
+  /** Resolves an installed content dir from a "verName-verCode" identifier. */
+  public static File findInstalledDir(
+          Context context, ContentProfile.ContentType type, String versionId) {
+    if (type == null || versionId == null || versionId.trim().isEmpty()) return null;
+    File typeDir = getContentTypeDir(context, type);
+    File exact = new File(typeDir, versionId);
+    if (exact.isDirectory()) return exact;
+    File[] dirs = typeDir.listFiles(File::isDirectory);
+    if (dirs == null) return null;
+    String wanted = normalizeVersionId(versionId);
+    for (File dir : dirs) {
+      if (normalizeVersionId(dir.getName()).equals(wanted)) return dir;
+    }
+    return null;
+  }
+
+  /** Same, from a full entry name such as "Proton-10.0-arm64ec-1". */
+  public static File findInstalledDirByEntryName(Context context, String entryName) {
+    if (entryName == null) return null;
+    int dash = entryName.indexOf('-');
+    if (dash <= 0) return null;
+    return findInstalledDir(
+            context,
+            ContentProfile.ContentType.getTypeByName(entryName.substring(0, dash)),
+            entryName.substring(dash + 1));
+  }
+
+  private static String normalizeVersionId(String value) {
+    return value.trim().toLowerCase(Locale.ROOT).replaceAll("\\s+", "-");
+  }
+
+  private static boolean dirContainsAarch64SharedObject(File dir, int depth) {
+    if (dir == null || depth > MAX_SCAN_DEPTH) return false;
+    File[] files = dir.listFiles();
+    if (files == null) return false;
+    for (File file : files) {
+      if (file.isDirectory()) {
+        if (dirContainsAarch64SharedObject(file, depth + 1)) return true;
+      } else if (isAarch64SharedObject(file)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Checks the ELF header itself, so the file name does not matter. */
+  static boolean isAarch64SharedObject(File file) {
+    if (file == null || !file.isFile() || file.length() < 20) return false;
+    byte[] h = new byte[20];
+    try (RandomAccessFile raf = new RandomAccessFile(file, "r")) {
+      raf.readFully(h);
+    } catch (java.io.IOException e) {
+      return false;
+    }
+    boolean elf = h[0] == 0x7F && h[1] == 'E' && h[2] == 'L' && h[3] == 'F';
+    if (!elf || h[5] != 1) return false; // ELF magic, little-endian only
+    int type = (h[16] & 0xFF) | ((h[17] & 0xFF) << 8);
+    int machine = (h[18] & 0xFF) | ((h[19] & 0xFF) << 8);
+    return type == ET_DYN && machine == EM_AARCH64;
+  }
+
+  /** Streams the file in chunks, keeping an overlap so a marker split across chunks is still found. */
+  static boolean fileContainsAnyMarker(File file, byte[][] markers) {
+    if (file == null || !file.isFile()) return false;
+    final int chunk = 64 * 1024;
+    int maxLen = 0;
+    for (byte[] m : markers) maxLen = Math.max(maxLen, m.length);
+    byte[] buf = new byte[chunk + maxLen];
+    int carry = 0;
+    try (FileInputStream in = new FileInputStream(file)) {
+      int read;
+      while ((read = in.read(buf, carry, chunk)) > 0) {
+        int end = carry + read;
+        for (byte[] m : markers) if (indexOf(buf, end, m) >= 0) return true;
+        carry = Math.min(maxLen - 1, end);
+        System.arraycopy(buf, end - carry, buf, 0, carry);
+      }
+    } catch (IOException e) {
+      return false;
+    }
+    return false;
+  }
+
+  private static int indexOf(byte[] data, int len, byte[] pattern) {
+    outer:
+    for (int i = 0; i <= len - pattern.length; i++) {
+      for (int j = 0; j < pattern.length; j++) {
+        if (data[i + j] != pattern[j]) continue outer;
+      }
+      return i;
+    }
+    return -1;
+  }
+
+  private static File findDirNamed(File dir, String name, int depth) {
+    if (depth > MAX_SCAN_DEPTH) return null;
+    File[] children = dir.listFiles(File::isDirectory);
+    if (children == null) return null;
+    for (File child : children) {
+      if (child.getName().equals(name)) return child;
+      File found = findDirNamed(child, name, depth + 1);
+      if (found != null) return found;
+    }
+    return null;
   }
 
   private static boolean dirContainsSharedObject(File dir) {
