@@ -5513,7 +5513,7 @@ private fun AdvancedSection(
         val wineIdentifier = displayServerWineIdentifier(state)
         val unixCompatible by produceState(false, fexVersion, wineIdentifier) {
             value = withContext(Dispatchers.IO) {
-                ContentsManager.hasUnixLibs(
+                ContentsManager.shipsUnixLibs(
                     ContentsManager.findInstalledDir(
                         unixContext, ContentProfile.ContentType.CONTENT_TYPE_FEXCORE, fexVersion)) &&
                         ContentsManager.wineHasUnixLibLoader(
