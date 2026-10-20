@@ -4,10 +4,14 @@ import androidx.collection.ArrayMap;
 import com.winlator.cmod.runtime.display.connector.XInputStream;
 import com.winlator.cmod.runtime.display.connector.XOutputStream;
 import com.winlator.cmod.runtime.display.xserver.events.Event;
+import com.winlator.cmod.runtime.system.LogManager;
+
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Objects;
 
 public class XClient implements XResourceManager.OnResourceLifecycleListener {
+  private final String TAG = "XClient";
   public final XServer xServer;
   private boolean authenticated = false;
   public final Integer resourceIDBase;
@@ -19,6 +23,7 @@ public class XClient implements XResourceManager.OnResourceLifecycleListener {
   private final XOutputStream outputStream;
   private final ArrayMap<Window, EventListener> eventListeners = new ArrayMap<>();
   private final ArrayList<XResource> resources = new ArrayList<>();
+  private volatile boolean teardown = false;
 
   public XClient(XServer xServer, XInputStream inputStream, XOutputStream outputStream) {
 
@@ -52,7 +57,9 @@ public class XClient implements XResourceManager.OnResourceLifecycleListener {
     try {
       event.send(sequenceNumber, outputStream);
     } catch (IOException e) {
-      e.printStackTrace();
+      if (!teardown) {
+        LogManager.logW(TAG, "Failed to send event: " + e.getMessage());
+      }
     }
   }
 
@@ -70,6 +77,7 @@ public class XClient implements XResourceManager.OnResourceLifecycleListener {
   }
 
   public void freeResources() {
+    teardown = true;
     try (XLock lock = xServer.lockAll()) {
       while (!resources.isEmpty()) {
         XResource resource = resources.remove(resources.size() - 1);
@@ -152,5 +160,9 @@ public class XClient implements XResourceManager.OnResourceLifecycleListener {
 
   public boolean isValidResourceId(int id) {
     return xServer.resourceIDs.isInInterval(id, resourceIDBase);
+  }
+
+  public boolean isTeardown() {
+    return teardown;
   }
 }
