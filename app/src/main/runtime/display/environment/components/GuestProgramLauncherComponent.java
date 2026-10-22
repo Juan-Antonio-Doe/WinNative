@@ -38,7 +38,7 @@ import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class GuestProgramLauncherComponent extends EnvironmentComponent {
-  private static final String TAG = "GuestProgramLauncherComponent";
+  private static final String TAG = "GuestLauncher";
   private static final String DEPENDENCY_LOG_TAG = "CurlDeps";
   private static final long DEPENDENCY_CHECK_TIMEOUT_MS = 1500L;
   private static final Object lock = new Object();
@@ -1259,13 +1259,17 @@ public class GuestProgramLauncherComponent extends EnvironmentComponent {
     if (DirectAudioDriver.INSTANCE.isSelected(effectiveAudioDriver)) {
       File audioShimDest = ensureImageFsNativeLibrary(context, imageFs, "libwaudio.so");
       if (audioShimDest != null && audioShimDest.exists()) {
-        Log.d("GuestLauncher", "DirectAudio: libwaudio shim staged in usr/lib");
+        if (!ld_preload.isEmpty()) {
+          ld_preload = ld_preload + ":";
+        }
+        ld_preload = ld_preload + audioShimDest.getAbsolutePath();
+        LogManager.log(TAG, "DirectAudio (" + DirectAudioDriver.IDENTIFIER + "): libwaudio.so staged in usr/lib and added to LD_PRELOAD");
       } else {
-        Log.w("GuestLauncher", "DirectAudio selected but libwaudio.so missing — audio may be silent");
+        LogManager.logW(TAG, "DirectAudio selected but libwaudio.so missing — audio may be silent");
       }
     }
 
-    Log.d("GuestLauncher", "Final LD_PRELOAD: " + ld_preload);
+    LogManager.log(TAG, "Final LD_PRELOAD: " + ld_preload);
     envVars.put("LD_PRELOAD", ld_preload);
 
     // Preserve the launcher-owned preload/input paths while restoring the
