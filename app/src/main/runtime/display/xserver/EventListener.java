@@ -1,11 +1,15 @@
 package com.winlator.cmod.runtime.display.xserver;
 
 import com.winlator.cmod.runtime.display.xserver.events.Event;
+import com.winlator.cmod.runtime.system.LogManager;
+
 import java.io.IOException;
+import java.util.Objects;
 
 public class EventListener {
   public final XClient client;
   public final Bitmask eventMask;
+  private final String TAG = "EventListener";
 
   public EventListener(XClient client, Bitmask eventMask) {
     this.client = client;
@@ -24,7 +28,9 @@ public class EventListener {
     try {
       event.send(client.getSequenceNumber(), client.getOutputStream());
     } catch (IOException e) {
-      e.printStackTrace();
+      if (!client.isTeardown()) {
+        LogManager.logW(TAG, "Failed to send event: " + e.getMessage());
+      }
     }
   }
 }
